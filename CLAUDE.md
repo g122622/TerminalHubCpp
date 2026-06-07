@@ -4,16 +4,36 @@ C++20 重写的终端会话管理器，功能与 Node.js 版 TerminalHub 完全�
 
 ## 构建
 
-```bash
-# 配置 (Debug)
-cmake --preset windows-clang-debug
+**重要：由于 VS 2026 (v18) 的 vcpkg 兼容性问题，必须使用 `scripts/configure.bat` 来构建，它会先调用 VsDevCmd 设置环境。**
 
-# 构建
+```bash
+# 首次配置 + 构建（推荐）
+scripts\configure.bat build
+
+# 仅配置
+scripts\configure.bat
+
+# 仅构建（已配置过，且 VsDevCmd 环境已生效）
 cmake --build build --preset windows-clang-debug
 
-# 运行测试
+# 运行单个测试
+build\Debug\test_output_buffer.exe
+build\Debug\test_ipc_message.exe
+build\Debug\test_config_manager.exe
+build\Debug\test_json_storage.exe
+
+# 运行全部测试（需要 VsDevCmd 环境）
 ctest --preset windows-clang-debug
+
+# 完整清理重建
+rm -rf build && scripts\configure.bat build
 ```
+
+### 构建失败排查
+
+如果遇到 `fatal error: 'cstdint' file not found` 等标准库找不到的错误，说明 VsDevCmd 环境未生效：
+1. 确保通过 `scripts\configure.bat` 执行构建，而非直接运行 cmake
+2. 如果增量构建出问题，执行 `rm -rf build && scripts\configure.bat build` 完整重建
 
 ## 技术栈
 

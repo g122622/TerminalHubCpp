@@ -57,6 +57,7 @@ FetchContent_MakeAvailable(cli11)
 # Windows API
 if(WIN32)
     link_libraries(advapi32)  # 进程和注册表操作
+    link_libraries(rpcrt4)    # UUID 生成 (UuidCreate)
 endif()
 
 # ============================================================
@@ -161,10 +162,22 @@ if(TH_BUILD_TESTS)
             GTest::gtest_main
         )
         target_compile_features(${test_name} PRIVATE cxx_std_20)
-        # 链接核心库源文件（测试需要）
+        # 禁用 MSVC 安全警告
+        if(MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            target_compile_definitions(${test_name} PRIVATE _CRT_SECURE_NO_WARNINGS)
+        endif()
+        # 链接核心库和存储库源文件（测试需要）
         target_sources(${test_name} PRIVATE
             ${CORE_SOURCES}
+            ${STORAGE_SOURCES}
+            ${SESSION_SOURCES}
+            ${IPC_SOURCES}
+            ${PTY_SOURCES}
         )
+        # Windows 特定链接
+        if(WIN32)
+            target_link_libraries(${test_name} PRIVATE rpcrt4)
+        endif()
         add_test(NAME ${test_name} COMMAND ${test_name})
     endfunction()
 
@@ -172,4 +185,5 @@ if(TH_BUILD_TESTS)
     add_th_test(test_ipc_message)
     add_th_test(test_config_manager)
     add_th_test(test_json_storage)
+    add_th_test(test_session)
 endif()

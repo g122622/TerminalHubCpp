@@ -1,7 +1,1 @@
-#include "terminalhub/Storage/JsonStorage.hpp"
-
-namespace th {
-
-// TODO: 实现 JsonStorage
-
-} // namespace th
+// JsonStorage 是 header-only 模板类，无需实现文件
