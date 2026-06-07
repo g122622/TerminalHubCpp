@@ -11,6 +11,8 @@
 #include <consoleapi2.h>
 
 #include <CLI/CLI.hpp>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -39,8 +41,57 @@ static void printSuccess(const std::string& msg) {
     std::cout << "\x1b[32m" << "ok" << "\x1b[0m" << " " << msg << "\n";
 }
 
+static void printWarn(const std::string& msg) {
+    std::cout << "\x1b[33m" << "warn" << "\x1b[0m" << " " << msg << "\n";
+}
+
 static void printError(const std::string& msg) {
     std::cerr << "\x1b[31m" << "error" << "\x1b[0m" << " " << msg << "\n";
+}
+
+static void printTitle(const std::string& msg) {
+    std::cout << "\n  \x1b[1;36m" << msg << "\x1b[0m\n\n";
+}
+
+static void printItem(const std::string& label, const std::string& value) {
+    std::cout << "    \x1b[90m" << label << ":\x1b[0m " << value << "\n";
+}
+
+static void printDivider() {
+    std::cout << "  \x1b[90m" << std::string(50, '-') << "\x1b[0m\n";
+}
+
+/**
+ * @brief Check if a process with the given PID is alive
+ */
+static bool isProcessAlive(DWORD pid) {
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (hProcess == nullptr) {
+        return false;
+    }
+    DWORD exitCode = 0;
+    if (GetExitCodeProcess(hProcess, &exitCode)) {
+        CloseHandle(hProcess);
+        return exitCode == STILL_ACTIVE;
+    }
+    CloseHandle(hProcess);
+    return false;
+}
+
+/**
+ * @brief Read PID from PID file, returns 0 on failure
+ */
+static DWORD readPidFile(const std::filesystem::path& pidPath) {
+    if (!std::filesystem::exists(pidPath)) {
+        return 0;
+    }
+    std::ifstream file(pidPath);
+    if (!file.is_open()) {
+        return 0;
+    }
+    DWORD pid = 0;
+    file >> pid;
+    return pid;
 }
 
 /**
@@ -49,6 +100,21 @@ static void printError(const std::string& msg) {
  */
 static bool ensureDaemonRunning(const Config& config) {
     std::string pipePath = config.daemon.socketPath;
+
+    // Check PID file + process alive first (cheaper than socket check)
+    auto pidPath = Paths::daemonPidPath();
+    DWORD pid = readPidFile(pidPath);
+    if (pid != 0 && isProcessAlive(pid)) {
+        // Process exists, check if daemon is responding
+        if (IpcClient::isDaemonRunning(pipePath)) {
+            return true;
+        }
+    }
+
+    // Clean up stale PID file
+    if (std::filesystem::exists(pidPath)) {
+        std::filesystem::remove(pidPath);
+    }
 
     if (IpcClient::isDaemonRunning(pipePath)) {
         return true;
@@ -165,8 +231,8 @@ static int cmdNew(const std::string& title, const std::string& shell,
     }
 
     auto& data = reqResult.value();
-    if (data.contains("_error")) {
-        printError(data["_error"].get<std::string>());
+    if (data.contains("__error")) {
+        printError(data["__error"].get<std::string>());
         return 1;
     }
 
@@ -208,8 +274,8 @@ static int cmdList() {
     }
 
     auto& data = reqResult.value();
-    if (data.contains("_error")) {
-        printError(data["_error"].get<std::string>());
+    if (data.contains("__error")) {
+        printError(data["__error"].get<std::string>());
         return 1;
     }
 
@@ -218,7 +284,7 @@ static int cmdList() {
         return 0;
     }
 
-    std::cout << "\n  \x1b[1;36mActive Sessions\x1b[0m\n\n";
+    printTitle("Active Sessions");
 
     for (const auto& session : data) {
         std::string id = session.value("id", "");
@@ -227,18 +293,18 @@ static int cmdList() {
         i32 pid = session.value("pid", 0);
         i32 clients = session.value("connectedClients", 0);
         bool alive = session.value("alive", false);
-        i64 createdAt = session.value("createdAt", i64(0));
-        i64 lastActivity = session.value("lastActivityAt", i64(0));
 
         if (alive) {
             std::cout << "  \x1b[32m[" << id << "]\x1b[0m " << title << "\n";
         } else {
-            std::cout << "  \x1b[33m[" << id << "]\x1b[0m " << title << " (stopped)\n";
+            printWarn("[" + id + "] " + title + " (stopped)");
         }
-        std::cout << "    Shell: " << shell << " | PID: " << pid
-                  << " | Clients: " << clients << "\n";
-        std::cout << "    Created: " << formatTimestamp(createdAt) << "\n";
-        std::cout << "    Last activity: " << formatTimestamp(lastActivity) << "\n\n";
+        printItem("Shell", shell);
+        printItem("PID", std::to_string(pid));
+        printItem("Clients", std::to_string(clients));
+        printItem("Created", formatTimestamp(session.value("createdAt", i64(0))));
+        printItem("Last activity", formatTimestamp(session.value("lastActivityAt", i64(0))));
+        printDivider();
     }
 
     client.disconnect();
@@ -275,8 +341,8 @@ static int cmdKill(const std::string& sessionId) {
     }
 
     auto& data = reqResult.value();
-    if (data.contains("_error")) {
-        printError(data["_error"].get<std::string>());
+    if (data.contains("__error")) {
+        printError(data["__error"].get<std::string>());
         return 1;
     }
 
@@ -322,8 +388,8 @@ static int cmdRename(const std::string& sessionId, const std::string& newTitle) 
     }
 
     auto& data = reqResult.value();
-    if (data.contains("_error")) {
-        printError(data["_error"].get<std::string>());
+    if (data.contains("__error")) {
+        printError(data["__error"].get<std::string>());
         return 1;
     }
 
@@ -381,8 +447,8 @@ static int cmdAttach(const std::string& sessionId) {
     }
 
     auto& data = reqResult.value();
-    if (data.contains("_error")) {
-        printError(data["_error"].get<std::string>());
+    if (data.contains("__error")) {
+        printError(data["__error"].get<std::string>());
         return 1;
     }
 
@@ -404,7 +470,7 @@ static int cmdAttach(const std::string& sessionId) {
         }
     }
 
-    printInfo("Connected to session " + sessionId + ", press Ctrl+D to exit");
+    printInfo("Connected to session " + sessionId + ", press Ctrl+D or Ctrl+C to exit");
 
     // Set raw mode
     HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
@@ -421,22 +487,41 @@ static int cmdAttach(const std::string& sessionId) {
     GetConsoleMode(hStdOut, &oldOutputMode);
     SetConsoleMode(hStdOut, oldOutputMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
+    // Attach context for Ctrl handler
+    struct AttachContext {
+        volatile bool exiting = false;
+    };
+    auto ctx = std::make_shared<AttachContext>();
+
+    // Register Ctrl+C/Break handler for clean exit
+    auto ctrlHandler = [](DWORD ctrlType) -> BOOL {
+        if (ctrlType == CTRL_C_EVENT || ctrlType == CTRL_BREAK_EVENT) {
+            return TRUE;  // Handled - prevent default termination
+        }
+        return FALSE;
+    };
+    SetConsoleCtrlHandler(ctrlHandler, TRUE);
+
     // Set event callback
-    bool exiting = false;
-    client.onEvent([&sessionId, &exiting](const IpcEvent& event) {
+    client.onEvent([&sessionId, &ctx](const IpcEvent& event) {
         if (event.eventType == EventType::Output && event.sessionId == sessionId) {
             if (event.data.is_string()) {
                 std::cout << event.data.get<std::string>() << std::flush;
             }
         } else if (event.eventType == EventType::Exit && event.sessionId == sessionId) {
             printInfo("\nSession exited");
-            exiting = true;
+            ctx->exiting = true;
         }
+    });
+
+    // Set disconnect callback
+    client.onDisconnect([&ctx]() {
+        ctx->exiting = true;
     });
 
     // Input loop
     INPUT_RECORD records[16];
-    while (!exiting) {
+    while (!ctx->exiting) {
         DWORD eventsRead = 0;
         if (!ReadConsoleInputW(hStdIn, records, 16, &eventsRead)) {
             break;
@@ -451,7 +536,14 @@ static int cmdAttach(const std::string& sessionId) {
                 // Ctrl+D to exit
                 if (keyEvent.wVirtualKeyCode == 0x44 && // 'D'
                     (keyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) {
-                    exiting = true;
+                    ctx->exiting = true;
+                    break;
+                }
+
+                // Ctrl+C to exit
+                if (keyEvent.wVirtualKeyCode == 0x43 && // 'C'
+                    (keyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) {
+                    ctx->exiting = true;
                     break;
                 }
 
@@ -461,10 +553,10 @@ static int cmdAttach(const std::string& sessionId) {
                     int len = WideCharToMultiByte(CP_UTF8, 0,
                         &keyEvent.uChar.UnicodeChar, 1, buf, sizeof(buf), nullptr, nullptr);
                     if (len > 0) {
-                        InputPayload payload;
-                        payload.sessionId = sessionId;
-                        payload.data = std::string(buf, len);
-                        client.request(CommandType::Input, payload.toJson(), 0);
+                        InputPayload inputPayload;
+                        inputPayload.sessionId = sessionId;
+                        inputPayload.data = std::string(buf, len);
+                        client.request(CommandType::Input, inputPayload.toJson(), 0);
                     }
                 }
             } else if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
@@ -485,7 +577,13 @@ static int cmdAttach(const std::string& sessionId) {
         }
     }
 
-    // Restore console mode
+    // Send detach request
+    AttachSessionPayload detachPayload;
+    detachPayload.sessionId = sessionId;
+    client.request(CommandType::Detach, detachPayload.toJson(), 0);
+
+    // Remove Ctrl handler and restore console mode
+    SetConsoleCtrlHandler(ctrlHandler, FALSE);
     SetConsoleMode(hStdIn, oldInputMode);
     SetConsoleMode(hStdOut, oldOutputMode);
 

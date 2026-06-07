@@ -152,6 +152,14 @@ Result<nlohmann::json> IpcClient::request(CommandType command,
     }
 
     auto result = future.get();
+
+    // Check for error marker from server
+    if (result.is_object() && result.contains("__error")) {
+        std::string errorMsg = result["__error"].get<std::string>();
+        return Result<nlohmann::json>::err(
+            Error::ipcError(errorMsg, "IpcClient::request"));
+    }
+
     return Result<nlohmann::json>::ok(std::move(result));
 }
 
@@ -165,6 +173,10 @@ bool IpcClient::isConnected() const {
 
 void IpcClient::onEvent(std::function<void(const IpcEvent&)> callback) {
     m_onEvent = std::move(callback);
+}
+
+void IpcClient::onDisconnect(std::function<void()> callback) {
+    m_onDisconnect = std::move(callback);
 }
 
 // ============================================================
@@ -243,6 +255,11 @@ void IpcClient::_readThreadFunc() {
     }
 
     m_running = false;
+
+    // Notify disconnect callback if not explicitly disconnecting
+    if (m_hPipe != INVALID_HANDLE_VALUE && m_onDisconnect) {
+        m_onDisconnect();
+    }
 }
 
 // ============================================================
@@ -271,9 +288,9 @@ void IpcClient::_handleData(const std::string& data) {
                 if (response->success) {
                     it->second->promise.set_value(response->data);
                 } else {
-                    // On failure, set empty JSON with error info
+                    // Store error as special marker object with __error field
                     nlohmann::json errorData;
-                    errorData["_error"] = response->error;
+                    errorData["__error"] = response->error;
                     it->second->promise.set_value(errorData);
                 }
             }

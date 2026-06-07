@@ -196,6 +196,10 @@ void IpcServer::onClientDisconnect(std::function<void(u64)> callback) {
     m_onClientDisconnect = std::move(callback);
 }
 
+void IpcServer::onError(std::function<void(const std::string&)> callback) {
+    m_onError = std::move(callback);
+}
+
 // ============================================================
 // IOCP worker thread
 // ============================================================
@@ -296,7 +300,11 @@ void IpcServer::_acceptConnection() {
         nullptr);
 
     if (hPipe == INVALID_HANDLE_VALUE) {
-        Logger::error("CreateNamedPipe failed: " + std::to_string(GetLastError()));
+        std::string errMsg = "CreateNamedPipe failed: " + std::to_string(GetLastError());
+        Logger::error(errMsg);
+        if (m_onError) {
+            m_onError(errMsg);
+        }
         return;
     }
 
@@ -335,7 +343,11 @@ void IpcServer::_acceptConnection() {
             // Post read operation
             _postRead(clientId);
         } else {
-            Logger::error("ConnectNamedPipe failed: " + std::to_string(lastError));
+            std::string errMsg = "ConnectNamedPipe failed: " + std::to_string(lastError);
+            Logger::error(errMsg);
+            if (m_onError) {
+                m_onError(errMsg);
+            }
             _cleanupClient(clientId);
             return;
         }
@@ -408,6 +420,11 @@ void IpcServer::_handleData(u64 clientId, const std::string& /*data*/) {
         auto req = IpcRequest::deserialize(line);
         if (req) {
             _handleRequest(clientId, *req);
+        } else {
+            Logger::warn("Failed to parse IPC request from client " + std::to_string(clientId));
+            if (m_onError) {
+                m_onError("Failed to parse IPC request from client " + std::to_string(clientId));
+            }
         }
     }
 

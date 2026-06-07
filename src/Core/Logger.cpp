@@ -57,4 +57,10 @@ void Logger::error(std::string_view msg) {
     }
 }
 
+void Logger::error(std::string_view msg, const std::exception& ex) {
+    if (s_logger) {
+        s_logger->error("{} | Exception: {}", msg, ex.what());
+    }
+}
+
 } // namespace th

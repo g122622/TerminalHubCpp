@@ -65,6 +65,11 @@ public:
     void onEvent(std::function<void(const IpcEvent&)> callback);
 
     /**
+     * @brief Set disconnect callback (called when connection to daemon is lost)
+     */
+    void onDisconnect(std::function<void()> callback);
+
+    /**
      * @brief Check if the Daemon is running
      * @param pipePath Named Pipe path
      */
@@ -98,6 +103,9 @@ private:
 
     // Event callback
     std::function<void(const IpcEvent&)> m_onEvent;
+
+    // Disconnect callback
+    std::function<void()> m_onDisconnect;
 
     // Read thread
     std::thread m_readThread;

@@ -67,27 +67,71 @@ Result<Config> ConfigManager::load() {
         Config config;
         config.version = j.value("version", "1.0.0");
 
-        // daemon
-        if (j.contains("daemon")) {
-            auto& d = j["daemon"];
-            config.daemon.socketPath = d.value("socketPath", "");
-            config.daemon.logLevel = d.value("logLevel", "info");
+        // daemon - required fields, no defaults
+        if (!j.contains("daemon") || !j["daemon"].is_object()) {
+            return Result<Config>::err(Error::configError(
+                "Missing config section: daemon",
+                "ConfigManager::load"));
         }
+        auto& d = j["daemon"];
+        if (!d.contains("socketPath")) {
+            return Result<Config>::err(Error::configError(
+                "Missing config: daemon.socketPath",
+                "ConfigManager::load"));
+        }
+        config.daemon.socketPath = d["socketPath"].get<std::string>();
+        if (!d.contains("logLevel")) {
+            return Result<Config>::err(Error::configError(
+                "Missing config: daemon.logLevel",
+                "ConfigManager::load"));
+        }
+        config.daemon.logLevel = d["logLevel"].get<std::string>();
 
-        // session
-        if (j.contains("session")) {
-            auto& s = j["session"];
-            config.session.outputBufferLines = s.value("outputBufferLines", 1000);
-            config.session.titleMaxLength = s.value("titleMaxLength", 50);
-            config.session.defaultShell = s.value("defaultShell", "powershell");
+        // session - required fields, no defaults
+        if (!j.contains("session") || !j["session"].is_object()) {
+            return Result<Config>::err(Error::configError(
+                "Missing config section: session",
+                "ConfigManager::load"));
         }
+        auto& s = j["session"];
+        if (!s.contains("outputBufferLines")) {
+            return Result<Config>::err(Error::configError(
+                "Missing config: session.outputBufferLines",
+                "ConfigManager::load"));
+        }
+        config.session.outputBufferLines = s["outputBufferLines"].get<i32>();
+        if (!s.contains("titleMaxLength")) {
+            return Result<Config>::err(Error::configError(
+                "Missing config: session.titleMaxLength",
+                "ConfigManager::load"));
+        }
+        config.session.titleMaxLength = s["titleMaxLength"].get<i32>();
+        if (!s.contains("defaultShell")) {
+            return Result<Config>::err(Error::configError(
+                "Missing config: session.defaultShell",
+                "ConfigManager::load"));
+        }
+        config.session.defaultShell = s["defaultShell"].get<std::string>();
 
-        // terminal
-        if (j.contains("terminal")) {
-            auto& t = j["terminal"];
-            config.terminal.cols = t.value("cols", 80);
-            config.terminal.rows = t.value("rows", 24);
+        // terminal - required fields, no defaults
+        if (!j.contains("terminal") || !j["terminal"].is_object()) {
+            return Result<Config>::err(Error::configError(
+                "Missing config section: terminal",
+                "ConfigManager::load"));
         }
+        auto& t = j["terminal"];
+        if (!t.contains("cols")) {
+            return Result<Config>::err(Error::configError(
+                "Missing config: terminal.cols",
+                "ConfigManager::load"));
+        }
+        config.terminal.cols = t["cols"].get<i32>();
+        if (!t.contains("rows")) {
+            return Result<Config>::err(Error::configError(
+                "Missing config: terminal.rows",
+                "ConfigManager::load"));
+        }
+        config.terminal.rows = t["rows"].get<i32>();
 
         // Validate required fields
         auto validateResult = validate(config);
@@ -169,24 +213,19 @@ Result<void> ConfigManager::init() {
 }
 
 Result<void> ConfigManager::validate(const Config& config) const {
-    // Required field validation
-    if (config.daemon.socketPath.empty()) {
-        return Result<void>::err(Error::configError(
-            "Missing config: daemon.socketPath",
-            "ConfigManager::validate"));
-    }
-
-    if (config.daemon.logLevel.empty()) {
-        return Result<void>::err(Error::configError(
-            "Missing config: daemon.logLevel",
-            "ConfigManager::validate"));
-    }
-
     // Validate logLevel value
     if (config.daemon.logLevel != "debug" && config.daemon.logLevel != "info"
         && config.daemon.logLevel != "warn" && config.daemon.logLevel != "error") {
         return Result<void>::err(Error::configError(
             "Invalid config: daemon.logLevel must be debug|info|warn|error",
+            "ConfigManager::validate"));
+    }
+
+    // Validate defaultShell value
+    if (config.session.defaultShell != "cmd" && config.session.defaultShell != "powershell"
+        && config.session.defaultShell != "bash") {
+        return Result<void>::err(Error::configError(
+            "Invalid config: session.defaultShell must be cmd|powershell|bash",
             "ConfigManager::validate"));
     }
 
@@ -199,12 +238,6 @@ Result<void> ConfigManager::validate(const Config& config) const {
     if (config.session.titleMaxLength <= 0) {
         return Result<void>::err(Error::configError(
             "Invalid config: session.titleMaxLength must be positive",
-            "ConfigManager::validate"));
-    }
-
-    if (config.session.defaultShell.empty()) {
-        return Result<void>::err(Error::configError(
-            "Missing config: session.defaultShell",
             "ConfigManager::validate"));
     }
 

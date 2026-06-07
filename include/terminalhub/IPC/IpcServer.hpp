@@ -82,6 +82,11 @@ public:
      */
     void onClientDisconnect(std::function<void(u64 clientId)> callback);
 
+    /**
+     * @brief Set error callback (called on JSON parse errors, connection errors, etc.)
+     */
+    void onError(std::function<void(const std::string& message)> callback);
+
 private:
     /**
      * @brief IOCP worker thread
@@ -149,6 +154,7 @@ private:
     // Callbacks
     std::function<void(u64)> m_onClientConnect;
     std::function<void(u64)> m_onClientDisconnect;
+    std::function<void(const std::string&)> m_onError;
 
     // Worker threads
     std::vector<std::thread> m_workers;

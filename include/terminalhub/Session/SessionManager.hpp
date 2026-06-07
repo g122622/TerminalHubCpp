@@ -65,7 +65,7 @@ private:
     /**
      * @brief Handle session exit
      */
-    void _handleSessionExit(const std::string& sessionId);
+    void _handleSessionExit(const std::string& sessionId, u32 exitCode);
 
     Config m_config;
     SessionRegistry m_registry;

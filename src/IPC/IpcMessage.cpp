@@ -255,11 +255,21 @@ std::string generateRequestId() {
     if (SUCCEEDED(UuidCreate(&uuid))) {
         RPC_CSTR str = nullptr;
         if (SUCCEEDED(UuidToStringA(&uuid, &str)) && str != nullptr) {
+            // UuidToStringA produces format like "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            // but on some Windows versions it may omit hyphens.
+            // Insert hyphens at standard UUID positions if missing.
             std::string result(reinterpret_cast<char*>(str));
             RpcStringFreeA(&str);
-            // Convert to lowercase
             for (auto& c : result) {
                 c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+            }
+            // Insert hyphens if the result is 32 hex chars (no hyphens)
+            if (result.size() == 32) {
+                result = result.substr(0, 8) + "-" +
+                         result.substr(8, 4) + "-" +
+                         result.substr(12, 4) + "-" +
+                         result.substr(16, 4) + "-" +
+                         result.substr(20, 12);
             }
             return result;
         }
@@ -275,9 +285,9 @@ std::string generateSessionId() {
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<u32> dist(0, 0xFFFFFF);
+    std::uniform_int_distribution<u32> dist(0, 0xFFFFFFFF);
     char buf[64];
-    snprintf(buf, sizeof(buf), "th_%lld_%06x",
+    snprintf(buf, sizeof(buf), "th_%lld_%08x",
              static_cast<long long>(ms), dist(gen));
     return buf;
 }

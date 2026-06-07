@@ -41,6 +41,7 @@ public:
     static void info(std::string_view msg);
     static void warn(std::string_view msg);
     static void error(std::string_view msg);
+    static void error(std::string_view msg, const std::exception& ex);
 
 private:
     static LogLevel s_level;

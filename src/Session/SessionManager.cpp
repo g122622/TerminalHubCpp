@@ -75,7 +75,7 @@ Result<Session*> SessionManager::createSession(const CreateSessionOptions& optio
     std::string sessionId = id;
     session->ptyProcess->onExit([this, sessionId](u32 exitCode) {
         Logger::info("Session " + sessionId + " exited: code=" + std::to_string(exitCode));
-        _handleSessionExit(sessionId);
+        _handleSessionExit(sessionId, exitCode);
     });
 
     // Persist to registry
@@ -141,11 +141,11 @@ bool SessionManager::renameSession(const std::string& sessionId,
     return true;
 }
 
-void SessionManager::_handleSessionExit(const std::string& sessionId) {
+void SessionManager::_handleSessionExit(const std::string& sessionId, u32 exitCode) {
     auto it = m_sessions.find(sessionId);
     if (it != m_sessions.end()) {
         it->second->ptyProcess.reset();
-        it->second->broadcastExit(0);
+        it->second->broadcastExit(exitCode);
         m_registry.remove(sessionId);
     }
 }
