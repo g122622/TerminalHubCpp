@@ -176,7 +176,7 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
 
     // Create process
     PROCESS_INFORMATION pi{};
-    DWORD creationFlags = EXTENDED_STARTUPINFO_PRESENT;
+    DWORD creationFlags = EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT;
 
     BOOL success = CreateProcessW(
         nullptr,

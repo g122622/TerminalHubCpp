@@ -191,17 +191,15 @@ bool IpcClient::isDaemonRunning(const std::string& pipePath) {
 
     std::wstring wPipeName(fullPath.begin(), fullPath.end());
 
-    HANDLE hPipe = CreateFileW(
-        wPipeName.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        nullptr,
-        OPEN_EXISTING,
-        0,
-        nullptr);
+    // WaitNamedPipe 只检查管道是否存在且可连接，不会实际建立连接
+    if (WaitNamedPipeW(wPipeName.c_str(), 0)) {
+        return true;
+    }
 
-    if (hPipe != INVALID_HANDLE_VALUE) {
-        CloseHandle(hPipe);
+    // 如果 WaitNamedPipe 返回 FALSE 但错误码是 ERROR_PIPE_BUSY，
+    // 说明管道存在但正忙（守护进程在运行）
+    DWORD err = GetLastError();
+    if (err == ERROR_PIPE_BUSY) {
         return true;
     }
 
@@ -215,22 +213,31 @@ bool IpcClient::isDaemonRunning(const std::string& pipePath) {
 void IpcClient::_readThreadFunc() {
     constexpr DWORD BUFFER_SIZE = 4096;
     char buffer[BUFFER_SIZE];
-    OVERLAPPED overlapped{};
-    overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
     while (m_running) {
-        DWORD bytesRead = 0;
-        memset(&overlapped, 0, sizeof(OVERLAPPED));
+        OVERLAPPED overlapped{};
         overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!overlapped.hEvent) {
+            break;
+        }
 
-        BOOL ok = ReadFile(m_hPipe, buffer, BUFFER_SIZE - 1, &bytesRead, &overlapped);
+        BOOL ok = ReadFile(m_hPipe, buffer, BUFFER_SIZE - 1,
+                           nullptr, &overlapped);
         if (!ok) {
             DWORD err = GetLastError();
             if (err == ERROR_IO_PENDING) {
                 // Wait for completion
                 DWORD waitResult = WaitForSingleObject(overlapped.hEvent, 500);
                 if (waitResult == WAIT_OBJECT_0) {
+                    DWORD bytesRead = 0;
                     ok = GetOverlappedResult(m_hPipe, &overlapped, &bytesRead, FALSE);
+                    if (ok && bytesRead > 0) {
+                        buffer[bytesRead] = '\0';
+                        _handleData(std::string(buffer, bytesRead));
+                    } else if (!ok || bytesRead == 0) {
+                        CloseHandle(overlapped.hEvent);
+                        break;
+                    }
                 } else if (waitResult == WAIT_TIMEOUT) {
                     CloseHandle(overlapped.hEvent);
                     continue;
@@ -242,16 +249,20 @@ void IpcClient::_readThreadFunc() {
                 CloseHandle(overlapped.hEvent);
                 break;
             }
+        } else {
+            // ReadFile completed synchronously
+            DWORD bytesRead = 0;
+            GetOverlappedResult(m_hPipe, &overlapped, &bytesRead, FALSE);
+            if (bytesRead > 0) {
+                buffer[bytesRead] = '\0';
+                _handleData(std::string(buffer, bytesRead));
+            } else {
+                CloseHandle(overlapped.hEvent);
+                break;
+            }
         }
 
         CloseHandle(overlapped.hEvent);
-
-        if (!ok || bytesRead == 0) {
-            break;
-        }
-
-        buffer[bytesRead] = '\0';
-        _handleData(std::string(buffer, bytesRead));
     }
 
     m_running = false;
@@ -321,9 +332,22 @@ void IpcClient::_sendRaw(const std::string& data) {
         return;
     }
 
+    OVERLAPPED overlapped{};
+    overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!overlapped.hEvent) {
+        return;
+    }
+
     DWORD written = 0;
-    WriteFile(m_hPipe, data.c_str(), static_cast<DWORD>(data.size()),
-              &written, nullptr);
+    BOOL ok = WriteFile(m_hPipe, data.c_str(), static_cast<DWORD>(data.size()),
+                        nullptr, &overlapped);
+
+    if (!ok && GetLastError() == ERROR_IO_PENDING) {
+        WaitForSingleObject(overlapped.hEvent, 5000);
+        GetOverlappedResult(m_hPipe, &overlapped, &written, TRUE);
+    }
+
+    CloseHandle(overlapped.hEvent);
 }
 
 } // namespace th::ipc

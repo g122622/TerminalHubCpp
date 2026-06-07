@@ -65,7 +65,7 @@ bool IpcServer::start() {
 
     m_running = true;
 
-    // Start worker threads (count = CPU cores)
+    // Start worker threads
     DWORD threadCount = static_cast<DWORD>(std::max<unsigned int>(1u, std::thread::hardware_concurrency()));
     for (DWORD i = 0; i < threadCount; i++) {
         m_workers.emplace_back([this]() { _workerThread(); });
@@ -149,10 +149,8 @@ void IpcServer::broadcast(EventType eventType, const nlohmann::json& data,
 
     std::lock_guard<std::mutex> lock(m_clientsMutex);
     for (auto& [id, ctx] : m_clients) {
-        if (ctx->connected) {
-            DWORD written = 0;
-            WriteFile(ctx->hPipe, json.c_str(), static_cast<DWORD>(json.size()),
-                      &written, nullptr);
+        if (ctx->connected && ctx->state == ClientState::Connected) {
+            _sendRawLocked(id, json);
         }
     }
 }
@@ -166,16 +164,46 @@ void IpcServer::sendToClient(u64 clientId, EventType eventType,
     event.data = data;
 
     std::string json = event.serialize() + "\n";
-    _sendRaw(clientId, json);
+    {
+        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        _sendRawLocked(clientId, json);
+    }
 }
 
-void IpcServer::_sendRaw(u64 clientId, const std::string& data) {
-    std::lock_guard<std::mutex> lock(m_clientsMutex);
+void IpcServer::_sendRawLocked(u64 clientId, const std::string& data) {
     auto it = m_clients.find(clientId);
-    if (it != m_clients.end() && it->second->connected) {
-        DWORD written = 0;
-        WriteFile(it->second->hPipe, data.c_str(), static_cast<DWORD>(data.size()),
-                  &written, nullptr);
+    if (it == m_clients.end() || !it->second->connected) {
+        return;
+    }
+
+    auto& ctx = it->second;
+
+    // 初始化写入事件（首次使用时创建）
+    if (!ctx->hWriteEvent) {
+        ctx->hWriteEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!ctx->hWriteEvent) {
+            Logger::error("Failed to create write event for client " + std::to_string(clientId));
+            return;
+        }
+    }
+
+    memset(&ctx->writeOverlapped, 0, sizeof(OVERLAPPED));
+    ctx->writeOverlapped.hEvent = ctx->hWriteEvent;
+    ResetEvent(ctx->hWriteEvent);
+
+    BOOL ok = WriteFile(ctx->hPipe, data.c_str(),
+                        static_cast<DWORD>(data.size()),
+                        nullptr, &ctx->writeOverlapped);
+    if (!ok) {
+        DWORD err = GetLastError();
+        if (err == ERROR_IO_PENDING) {
+            DWORD written = 0;
+            WaitForSingleObject(ctx->hWriteEvent, 5000);
+            GetOverlappedResult(ctx->hPipe, &ctx->writeOverlapped, &written, FALSE);
+        } else {
+            Logger::error("WriteFile failed for client " + std::to_string(clientId) +
+                          " err=" + std::to_string(err));
+        }
     }
 }
 
@@ -212,7 +240,7 @@ void IpcServer::_workerThread() {
 
         BOOL ok = GetQueuedCompletionStatus(
             m_hCompletionPort, &bytesTransferred,
-            &completionKey, &overlapped, 500);
+            &completionKey, &overlapped, INFINITE);
 
         if (!m_running) {
             break;
@@ -224,8 +252,22 @@ void IpcServer::_workerThread() {
 
         if (!ok) {
             if (overlapped) {
-                // IO failure -> client disconnected
-                // Find the corresponding client ID
+                // 检查是否是写入完成（忽略错误）
+                bool isWriteOverlapped = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_clientsMutex);
+                    for (auto& [id, ctx] : m_clients) {
+                        if (&ctx->writeOverlapped == overlapped) {
+                            isWriteOverlapped = true;
+                            break;
+                        }
+                    }
+                }
+                if (isWriteOverlapped) {
+                    continue;
+                }
+
+                // 读/连接失败 -> 客户端断开
                 std::lock_guard<std::mutex> lock(m_clientsMutex);
                 for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
                     if (&it->second->overlapped == overlapped) {
@@ -242,42 +284,98 @@ void IpcServer::_workerThread() {
             continue;
         }
 
-        if (bytesTransferred == 0 || !overlapped) {
+        if (!overlapped) {
             continue;
         }
 
-        // Find the corresponding client
-        u64 clientId = 0;
+        // 检查是否是写入完成（忽略，由 _sendRawLocked 处理）
         {
             std::lock_guard<std::mutex> lock(m_clientsMutex);
             for (auto& [id, ctx] : m_clients) {
-                if (&ctx->overlapped == overlapped) {
-                    clientId = id;
-                    break;
+                if (&ctx->writeOverlapped == overlapped) {
+                    goto next_iteration;
                 }
             }
         }
 
-        if (clientId == 0) {
-            continue;
-        }
-
-        // Process received data
+        // 查找对应的客户端（通过读/连接 overlapped）
         {
-            std::lock_guard<std::mutex> lock(m_clientsMutex);
-            auto it = m_clients.find(clientId);
-            if (it == m_clients.end()) {
+            u64 clientId = 0;
+            ClientState clientState = ClientState::Connecting;
+            {
+                std::lock_guard<std::mutex> lock(m_clientsMutex);
+                for (auto& [id, ctx] : m_clients) {
+                    if (&ctx->overlapped == overlapped) {
+                        clientId = id;
+                        clientState = ctx->state;
+                        break;
+                    }
+                }
+            }
+
+            if (clientId == 0) {
                 continue;
             }
-            auto& ctx = it->second;
-            std::string data(ctx->readBuffer, bytesTransferred);
-            ctx->lineBuffer += data;
+
+            if (clientState == ClientState::Connecting) {
+                // ConnectNamedPipe 完成 — 客户端已连接
+                {
+                    std::lock_guard<std::mutex> lock(m_clientsMutex);
+                    auto it = m_clients.find(clientId);
+                    if (it != m_clients.end()) {
+                        it->second->state = ClientState::Connected;
+                    }
+                }
+
+                if (m_onClientConnect) {
+                    m_onClientConnect(clientId);
+                }
+
+                // 开始读取
+                _postRead(clientId);
+
+                // 接受下一个连接
+                if (m_running) {
+                    _acceptConnection();
+                }
+            } else {
+                // ReadFile 完成
+                if (bytesTransferred == 0) {
+                    // 客户端断开
+                    {
+                        std::lock_guard<std::mutex> lock(m_clientsMutex);
+                        auto it = m_clients.find(clientId);
+                        if (it != m_clients.end()) {
+                            it->second->connected = false;
+                            m_clients.erase(it);
+                        }
+                    }
+                    if (m_onClientDisconnect) {
+                        m_onClientDisconnect(clientId);
+                    }
+                    continue;
+                }
+
+                // 处理接收到的数据
+                {
+                    std::lock_guard<std::mutex> lock(m_clientsMutex);
+                    auto it = m_clients.find(clientId);
+                    if (it == m_clients.end()) {
+                        continue;
+                    }
+                    auto& ctx = it->second;
+                    std::string data(ctx->readBuffer, bytesTransferred);
+                    ctx->lineBuffer += data;
+                }
+
+                _handleData(clientId, "");
+
+                // 发起下一次读取
+                _postRead(clientId);
+            }
         }
 
-        _handleData(clientId, "");
-
-        // Post next read
-        _postRead(clientId);
+        next_iteration:;
     }
 }
 
@@ -322,6 +420,8 @@ void IpcServer::_acceptConnection() {
     auto ctx = std::make_unique<ClientContext>();
     ctx->hPipe = hPipe;
     ctx->connected = true;
+    ctx->state = ClientState::Connecting;
+    ctx->clientId = clientId;
 
     {
         std::lock_guard<std::mutex> lock(m_clientsMutex);
@@ -339,9 +439,22 @@ void IpcServer::_acceptConnection() {
         if (lastError == ERROR_IO_PENDING) {
             // Connection pending, IOCP will notify on completion
         } else if (lastError == ERROR_PIPE_CONNECTED) {
-            // Client already connected
-            // Post read operation
+            // Client already connected — handle synchronously
+            {
+                std::lock_guard<std::mutex> lock(m_clientsMutex);
+                auto it = m_clients.find(clientId);
+                if (it != m_clients.end()) {
+                    it->second->state = ClientState::Connected;
+                }
+            }
+            if (m_onClientConnect) {
+                m_onClientConnect(clientId);
+            }
             _postRead(clientId);
+            // Accept next connection
+            if (m_running) {
+                _acceptConnection();
+            }
         } else {
             std::string errMsg = "ConnectNamedPipe failed: " + std::to_string(lastError);
             Logger::error(errMsg);
@@ -351,16 +464,6 @@ void IpcServer::_acceptConnection() {
             _cleanupClient(clientId);
             return;
         }
-    }
-
-    // Notify connection
-    if (m_onClientConnect) {
-        m_onClientConnect(clientId);
-    }
-
-    // Continue accepting next connection
-    if (m_running) {
-        _acceptConnection();
     }
 }
 
@@ -378,9 +481,8 @@ void IpcServer::_postRead(u64 clientId) {
     auto& ctx = it->second;
     memset(&ctx->overlapped, 0, sizeof(OVERLAPPED));
 
-    DWORD bytesRead = 0;
     BOOL ok = ReadFile(ctx->hPipe, ctx->readBuffer, sizeof(ctx->readBuffer) - 1,
-                       &bytesRead, &ctx->overlapped);
+                       nullptr, &ctx->overlapped);
 
     if (!ok) {
         DWORD err = GetLastError();
@@ -462,7 +564,10 @@ void IpcServer::_handleRequest(u64 clientId, const IpcRequest& request) {
     }
 
     std::string json = response.serialize() + "\n";
-    _sendRaw(clientId, json);
+    {
+        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        _sendRawLocked(clientId, json);
+    }
 }
 
 // ============================================================
@@ -476,6 +581,9 @@ void IpcServer::_cleanupClient(u64 clientId) {
         if (it->second->hPipe != INVALID_HANDLE_VALUE) {
             DisconnectNamedPipe(it->second->hPipe);
             CloseHandle(it->second->hPipe);
+        }
+        if (it->second->hWriteEvent) {
+            CloseHandle(it->second->hWriteEvent);
         }
         m_clients.erase(it);
     }

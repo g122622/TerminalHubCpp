@@ -120,9 +120,9 @@ private:
     void _handleRequest(u64 clientId, const IpcRequest& request);
 
     /**
-     * @brief Send raw data to a client
+     * @brief Send raw data to a client (must hold m_clientsMutex)
      */
-    void _sendRaw(u64 clientId, const std::string& data);
+    void _sendRawLocked(u64 clientId, const std::string& data);
 
     /**
      * @brief Clean up client resources
@@ -136,12 +136,21 @@ private:
     HANDLE m_hStopEvent{nullptr};
 
     // Client info
+    enum class ClientState : u8 {
+        Connecting,  // ConnectNamedPipe pending
+        Connected,   // Ready for I/O
+    };
+
     struct ClientContext {
         HANDLE hPipe{INVALID_HANDLE_VALUE};
-        OVERLAPPED overlapped{};
+        OVERLAPPED overlapped{};         // 用于 ReadFile / ConnectNamedPipe
+        OVERLAPPED writeOverlapped{};    // 用于 WriteFile
+        HANDLE hWriteEvent{nullptr};     // WriteFile 完成事件
         char readBuffer[4096]{};
         std::string lineBuffer;  // Incomplete line buffer
         bool connected{false};
+        ClientState state{ClientState::Connecting};
+        u64 clientId{0};
     };
 
     mutable std::mutex m_clientsMutex;
