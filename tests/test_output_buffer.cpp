@@ -3,7 +3,7 @@
 
 using namespace th;
 
-// === 基本读写测试 ===
+// === Basic read/write tests ===
 
 TEST(OutputBuffer, BasicWriteAndRead) {
     OutputBuffer buf(5);
@@ -20,8 +20,8 @@ TEST(OutputBuffer, BasicWriteAndRead) {
 TEST(OutputBuffer, WriteWithTrailingNewline) {
     OutputBuffer buf(5);
 
-    // "line1\nline2\n" → split 为 ["line1", "line2", ""]
-    // 前两个非空写入，尾部空串也写入（因为 lines.length !== 1）
+    // "line1\nline2\n" → split into ["line1", "line2", ""]
+    // The first two non-empty strings are written, the trailing empty string is also written (because lines.length !== 1)
     buf.write("line1\nline2\n");
     EXPECT_EQ(buf.size(), 3);
 
@@ -42,7 +42,7 @@ TEST(OutputBuffer, WriteEmptyString) {
 TEST(OutputBuffer, WriteOnlyNewline) {
     OutputBuffer buf(5);
 
-    // "\n" → split 为 ["", ""]（2个元素），都写入
+    // "\n" → split into ["", ""] (2 elements), both are written
     buf.write("\n");
     EXPECT_EQ(buf.size(), 2);
 
@@ -52,7 +52,7 @@ TEST(OutputBuffer, WriteOnlyNewline) {
     EXPECT_EQ(lines[1], "");
 }
 
-// === 环形缓冲区测试 ===
+// === Ring buffer tests ===
 
 TEST(OutputBuffer, RingBufferOverwrite) {
     OutputBuffer buf(3);
@@ -60,7 +60,7 @@ TEST(OutputBuffer, RingBufferOverwrite) {
     buf.write("line1\nline2\nline3");
     EXPECT_EQ(buf.size(), 3);
 
-    // 缓冲区已满，写入新行会覆盖最旧行
+    // Buffer is full, writing a new line overwrites the oldest
     buf.write("\nline4");
     EXPECT_EQ(buf.size(), 3);
 
@@ -136,7 +136,7 @@ TEST(OutputBuffer, ClearAndReuse) {
 TEST(OutputBuffer, MultipleWrites) {
     OutputBuffer buf(10);
 
-    // 连续写入无换行 → 多行
+    // Continuous writes without newlines → multiple lines
     buf.write("line1");
     buf.write("line2");
     buf.write("line3");
@@ -196,7 +196,7 @@ TEST(OutputBuffer, GetRecentLinesZeroReturnsAll) {
 TEST(OutputBuffer, OverwriteThenClearThenWrite) {
     OutputBuffer buf(2);
 
-    buf.write("a\nb\nc"); // 覆盖 a
+    buf.write("a\nb\nc"); // Overwrite a
     EXPECT_EQ(buf.size(), 2);
 
     buf.clear();
@@ -210,11 +210,11 @@ TEST(OutputBuffer, OverwriteThenClearThenWrite) {
     EXPECT_EQ(lines[0], "new");
 }
 
-// === 与原版 TypeScript 行为对齐的关键测试 ===
+// === Key tests aligned with original TypeScript behavior ===
 
 TEST(OutputBuffer, EmptyStringSkipped) {
-    // 原版 TS: if (line === "" && lines.length === 1) continue;
-    // 单独写入空字符串不产生任何行
+    // Original TS: if (line === "" && lines.length === 1) continue;
+    // Writing an empty string alone produces no lines
     OutputBuffer buf(5);
 
     buf.write("");
@@ -222,8 +222,8 @@ TEST(OutputBuffer, EmptyStringSkipped) {
 }
 
 TEST(OutputBuffer, NewlineProducesTwoEmptyLines) {
-    // 原版 TS: "\n".split("\n") → ["", ""]
-    // lines.length === 2, 不是 1, 所以空串也写入
+    // Original TS: "\n".split("\n") → ["", ""]
+    // lines.length === 2, not 1, so empty strings are also written
     OutputBuffer buf(5);
 
     buf.write("\n");
@@ -237,7 +237,7 @@ TEST(OutputBuffer, NewlineProducesTwoEmptyLines) {
 
 TEST(OutputBuffer, TrailingNewlineProducesEmptyLine) {
     // "hello\n".split("\n") → ["hello", ""]
-    // lines.length === 2, 空串写入
+    // lines.length === 2, empty string is written
     OutputBuffer buf(5);
 
     buf.write("hello\n");

@@ -11,16 +11,16 @@ using namespace th;
 class ConfigManagerTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // 使用临时目录进行测试
+        // Use temp directory for testing
         m_testDir = std::filesystem::temp_directory_path() / "terminalhub_test_config";
         std::filesystem::create_directories(m_testDir);
 
-        // 覆盖路径为临时目录
+        // Override paths to temp directory
         m_configPath = m_testDir / "config.json";
     }
 
     void TearDown() override {
-        // 清理临时目录
+        // Clean up temp directory
         std::filesystem::remove_all(m_testDir);
     }
 
@@ -52,11 +52,11 @@ TEST_F(ConfigManagerTest, LoadValidConfig) {
     })");
 
     ConfigManager mgr;
-    // 这里直接从文件路径加载，而非使用默认的 Paths::configPath()
-    // 由于 ConfigManager::load() 使用 Paths::configPath()，
-    // 我们改用更直接的测试方式：解析 JSON 并验证 Config 结构
+    // Load directly from file path, rather than using the default Paths::configPath()
+    // Since ConfigManager::load() uses Paths::configPath(),
+    // we use a more direct testing approach: parse JSON and verify the Config struct
 
-    // 先验证 JSON 解析
+    // First verify JSON parsing
     std::ifstream file(m_configPath);
     auto j = nlohmann::json::parse(file);
 
@@ -103,19 +103,19 @@ TEST_F(ConfigManagerTest, InitCreatesDirectoryAndConfig) {
     auto testDir = std::filesystem::temp_directory_path() / "terminalhub_test_init";
     std::filesystem::remove_all(testDir);
 
-    // init 应该创建目录和默认配置
+    // init should create directory and default config
     auto result = ConfigManager::init();
     EXPECT_TRUE(result.success());
 
-    // 目录应该存在
+    // Directory should exist
     EXPECT_TRUE(std::filesystem::exists(Paths::terminalHubDir()));
     EXPECT_TRUE(std::filesystem::exists(Paths::logsDir()));
 
-    // 配置文件应该存在
+    // Config file should exist
     EXPECT_TRUE(std::filesystem::exists(Paths::configPath()));
 
-    // 清理
-    // 注意：init() 使用真实的 Paths，这里我们验证配置文件内容
+    // Cleanup
+    // Note: init() uses real Paths, here we verify the config file content
     std::ifstream file(Paths::configPath());
     auto j = nlohmann::json::parse(file);
     EXPECT_TRUE(j.contains("version"));
@@ -125,20 +125,20 @@ TEST_F(ConfigManagerTest, InitCreatesDirectoryAndConfig) {
 }
 
 TEST_F(ConfigManagerTest, InitDoesNotOverwriteExisting) {
-    // 先 init 一次
+    // init once first
     ConfigManager::init();
 
-    // 修改配置文件
+    // Modify config file
     {
         std::ofstream file(Paths::configPath());
         file << R"({"version": "custom", "daemon": {"socketPath": "test", "logLevel": "debug"}, "session": {"outputBufferLines": 500, "titleMaxLength": 30, "defaultShell": "cmd"}, "terminal": {"cols": 120, "rows": 40}})";
     }
 
-    // 再 init 不应该覆盖
+    // init again should not overwrite
     auto result = ConfigManager::init();
     EXPECT_TRUE(result.success());
 
-    // 验证配置仍然是自定义值
+    // Verify config still has custom values
     std::ifstream file(Paths::configPath());
     auto j = nlohmann::json::parse(file);
     EXPECT_EQ(j["version"].get<std::string>(), "custom");
@@ -146,12 +146,12 @@ TEST_F(ConfigManagerTest, InitDoesNotOverwriteExisting) {
 
 TEST_F(ConfigManagerTest, ValidateMissingSocketPath) {
     Config config;
-    config.daemon.socketPath = ""; // 空 socketPath
+    config.daemon.socketPath = ""; // Empty socketPath
     config.daemon.logLevel = "info";
 
     ConfigManager mgr;
-    // validate 是 private，通过 load 间接测试
-    // 直接构造无效配置写入文件来测试
+    // validate is private, test indirectly through load
+    // Directly construct invalid config and write to file for testing
     writeConfig(R"({
         "version": "1.0.0",
         "daemon": {
@@ -169,7 +169,7 @@ TEST_F(ConfigManagerTest, ValidateMissingSocketPath) {
         }
     })");
 
-    // 验证空 socketPath 的 Config 确实有问题
+    // Verify Config with empty socketPath indeed has issues
     Config badConfig;
     badConfig.daemon.socketPath = "";
     badConfig.daemon.logLevel = "info";
@@ -179,14 +179,14 @@ TEST_F(ConfigManagerTest, ValidateMissingSocketPath) {
     badConfig.terminal.cols = 80;
     badConfig.terminal.rows = 24;
 
-    // 我们无法直接调用 validate，但通过 Config 结构体的默认值验证逻辑
+    // We cannot call validate directly, but through Config struct default value validation logic
     EXPECT_TRUE(badConfig.daemon.socketPath.empty());
 }
 
 TEST_F(ConfigManagerTest, ValidateInvalidLogLevel) {
     Config config;
     config.daemon.socketPath = "\\\\.\\pipe\\terminalhub";
-    config.daemon.logLevel = "invalid"; // 无效日志级别
+    config.daemon.logLevel = "invalid"; // Invalid log level
 
     EXPECT_NE(config.daemon.logLevel, "debug");
     EXPECT_NE(config.daemon.logLevel, "info");
@@ -196,12 +196,12 @@ TEST_F(ConfigManagerTest, ValidateInvalidLogLevel) {
 
 TEST_F(ConfigManagerTest, ValidateInvalidBufferLines) {
     Config config;
-    config.session.outputBufferLines = -1; // 无效值
+    config.session.outputBufferLines = -1; // Invalid value
     EXPECT_LT(config.session.outputBufferLines, 1);
 }
 
 TEST_F(ConfigManagerTest, ConfigJsonRoundTrip) {
-    // 验证 Config 可以序列化和反序列化
+    // Verify Config can be serialized and deserialized
     Config original;
     original.version = "2.0.0";
     original.daemon.socketPath = "\\\\.\\pipe\\custom";
@@ -212,7 +212,7 @@ TEST_F(ConfigManagerTest, ConfigJsonRoundTrip) {
     original.terminal.cols = 120;
     original.terminal.rows = 40;
 
-    // 序列化
+    // Serialize
     nlohmann::json j;
     j["version"] = original.version;
     j["daemon"]["socketPath"] = original.daemon.socketPath;
@@ -223,7 +223,7 @@ TEST_F(ConfigManagerTest, ConfigJsonRoundTrip) {
     j["terminal"]["cols"] = original.terminal.cols;
     j["terminal"]["rows"] = original.terminal.rows;
 
-    // 反序列化
+    // Deserialize
     Config loaded;
     loaded.version = j.value("version", "1.0.0");
     loaded.daemon.socketPath = j["daemon"]["socketPath"].get<std::string>();

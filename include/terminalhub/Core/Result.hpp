@@ -8,37 +8,37 @@
 namespace th {
 
 /**
- * @brief Result 类型，用于替代异常的错误处理
+ * @brief Result type for error handling replacing exceptions
  *
- * 使用示例：
+ * Usage example:
  *   Result<int> result = someFunction();
  *   if (!result.success()) {
- *       // 处理错误
- *       return result; // 传播错误
+ *       // handle error
+ *       return result; // propagate error
  *   }
  *   int value = result.value();
  *
- *   // 使用 TRY 宏传播错误
+ *   // Using TRY macro to propagate errors
  *   TRY(someFunction());
  */
 template<typename T>
 class Result {
 public:
-    // 成功构造
+    // Success construction
     static Result ok(T value) {
         Result r;
         r.m_data = std::move(value);
         return r;
     }
 
-    // 错误构造
+    // Error construction
     static Result err(Error error) {
         Result r;
         r.m_data = std::move(error);
         return r;
     }
 
-    // 便捷：从错误码和消息构造
+    // Convenience: construct from error code and message
     static Result err(Error::Code code, std::string message, std::string source = "") {
         return err(Error(code, std::move(message), std::move(source)));
     }
@@ -68,7 +68,7 @@ private:
     std::variant<T, Error> m_data;
 };
 
-// Result<void> 特化
+// Result<void> specialization
 template<>
 class Result<void> {
 public:
@@ -106,9 +106,9 @@ private:
 } // namespace th
 
 /**
- * @brief TRY 宏：如果表达式返回错误，立即传播错误
+ * @brief TRY macro: if the expression returns an error, immediately propagate it
  *
- * 使用示例：
+ * Usage example:
  *   Result<void> result = TRY(someFunction());
  *   Result<int> value = TRY(getValue());
  */
@@ -121,9 +121,9 @@ private:
     } while (0)
 
 /**
- * @brief TRY_VALUE 宏：提取 Result 中的值，如果错误则传播
+ * @brief TRY_VALUE macro: extract the value from a Result, propagate if error
  *
- * 使用示例：
+ * Usage example:
  *   auto value = TRY_VALUE(getValue());
  */
 #define TRY_VALUE(expr)                                                                                                \

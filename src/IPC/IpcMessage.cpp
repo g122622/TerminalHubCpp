@@ -12,7 +12,7 @@
 namespace th::ipc {
 
 // ============================================================
-// CommandType 转换
+// CommandType conversion
 // ============================================================
 
 std::string commandTypeToString(CommandType cmd) {
@@ -40,11 +40,11 @@ CommandType commandTypeFromString(const std::string& str) {
     if (str == "input")    return CommandType::Input;
     if (str == "resize")   return CommandType::Resize;
     if (str == "shutdown") return CommandType::Shutdown;
-    return CommandType::List; // 默认
+    return CommandType::List; // Default
 }
 
 // ============================================================
-// EventType 转换
+// EventType conversion
 // ============================================================
 
 std::string eventTypeToString(EventType evt) {
@@ -68,7 +68,7 @@ EventType eventTypeFromString(const std::string& str) {
 }
 
 // ============================================================
-// IpcRequest 序列化
+// IpcRequest serialization
 // ============================================================
 
 std::string IpcRequest::serialize() const {
@@ -97,7 +97,7 @@ std::optional<IpcRequest> IpcRequest::deserialize(const std::string& json) {
 }
 
 // ============================================================
-// IpcResponse 序列化
+// IpcResponse serialization
 // ============================================================
 
 std::string IpcResponse::serialize() const {
@@ -134,7 +134,7 @@ std::optional<IpcResponse> IpcResponse::deserialize(const std::string& json) {
 }
 
 // ============================================================
-// IpcEvent 序列化
+// IpcEvent serialization
 // ============================================================
 
 std::string IpcEvent::serialize() const {
@@ -163,7 +163,7 @@ std::optional<IpcEvent> IpcEvent::deserialize(const std::string& json) {
 }
 
 // ============================================================
-// Payload 实现
+// Payload implementations
 // ============================================================
 
 NewSessionPayload NewSessionPayload::fromJson(const nlohmann::json& j) {
@@ -247,7 +247,7 @@ nlohmann::json KillPayload::toJson() const {
 }
 
 // ============================================================
-// UUID 生成
+// UUID generation
 // ============================================================
 
 std::string generateRequestId() {
@@ -257,14 +257,14 @@ std::string generateRequestId() {
         if (SUCCEEDED(UuidToStringA(&uuid, &str)) && str != nullptr) {
             std::string result(reinterpret_cast<char*>(str));
             RpcStringFreeA(&str);
-            // 转小写
+            // Convert to lowercase
             for (auto& c : result) {
                 c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
             }
             return result;
         }
     }
-    // 回退：时间戳 + 随机数
+    // Fallback: timestamp + random
     auto now = std::chrono::system_clock::now().time_since_epoch().count();
     std::random_device rd;
     return "fallback-" + std::to_string(now) + "-" + std::to_string(rd());

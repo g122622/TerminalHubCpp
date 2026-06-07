@@ -1,1 +1,1 @@
-// JsonStorage 是 header-only 模板类，无需实现文件
+// JsonStorage is a header-only template class, no implementation file needed

@@ -10,7 +10,7 @@
 namespace th::ipc {
 
 // ============================================================
-// 命令类型
+// Command types
 // ============================================================
 
 enum class CommandType {
@@ -29,7 +29,7 @@ std::string commandTypeToString(CommandType cmd);
 CommandType commandTypeFromString(const std::string& str);
 
 // ============================================================
-// 事件类型
+// Event types
 // ============================================================
 
 enum class EventType {
@@ -44,7 +44,7 @@ std::string eventTypeToString(EventType evt);
 EventType eventTypeFromString(const std::string& str);
 
 // ============================================================
-// 消息基类
+// Message base class
 // ============================================================
 
 enum class MessageType {
@@ -54,42 +54,42 @@ enum class MessageType {
 };
 
 // ============================================================
-// IPC 请求
+// IPC Request
 // ============================================================
 
 struct IpcRequest {
     MessageType type = MessageType::Request;
-    std::string id;             // UUID 请求标识
+    std::string id;             // UUID request identifier
     CommandType command;
-    nlohmann::json payload;     // 可选 payload
+    nlohmann::json payload;     // Optional payload
 
     std::string serialize() const;
     static std::optional<IpcRequest> deserialize(const std::string& json);
 };
 
 // ============================================================
-// IPC 响应
+// IPC Response
 // ============================================================
 
 struct IpcResponse {
     MessageType type = MessageType::Response;
-    std::string id;             // 对应请求的 ID
+    std::string id;             // ID of the corresponding request
     bool success = false;
-    nlohmann::json data;        // 成功时的返回数据
-    std::string error;          // 失败时的错误信息
+    nlohmann::json data;        // Return data on success
+    std::string error;          // Error message on failure
 
     std::string serialize() const;
     static std::optional<IpcResponse> deserialize(const std::string& json);
 };
 
 // ============================================================
-// IPC 事件
+// IPC Event
 // ============================================================
 
 struct IpcEvent {
     MessageType type = MessageType::Event;
     EventType eventType;
-    std::string sessionId;      // 可选，关联的会话 ID
+    std::string sessionId;      // Optional, associated session ID
     nlohmann::json data;
 
     std::string serialize() const;
@@ -97,7 +97,7 @@ struct IpcEvent {
 };
 
 // ============================================================
-// Payload 类型
+// Payload types
 // ============================================================
 
 struct NewSessionPayload {
@@ -153,7 +153,7 @@ struct KillPayload {
 };
 
 // ============================================================
-// 辅助：生成 UUID
+// Helper: generate UUID
 // ============================================================
 
 std::string generateRequestId();

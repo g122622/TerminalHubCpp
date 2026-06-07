@@ -6,7 +6,7 @@
 namespace th {
 
 /**
- * @brief 错误类，携带错误码、消息和来源
+ * @brief Error class, carries error code, message and source
  */
 class Error {
 public:

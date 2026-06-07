@@ -9,12 +9,12 @@
 
 using namespace th;
 
-// 测试用的简单数据结构
+// Simple data structure for testing
 struct TestData {
     std::string name;
     i32 value{0};
 
-    // nlohmann_json 序列化支持
+    // nlohmann_json serialization support
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(TestData, name, value)
 };
 
@@ -81,7 +81,7 @@ TEST_F(JsonStorageTest, DeleteFile) {
 TEST_F(JsonStorageTest, DeleteNonExistent) {
     JsonStorage<TestData> storage(m_filePath);
 
-    // 删除不存在的文件应该成功
+    // Deleting non-existent file should succeed
     auto result = storage.deleteFile();
     EXPECT_TRUE(result.success());
 }
@@ -89,11 +89,11 @@ TEST_F(JsonStorageTest, DeleteNonExistent) {
 TEST_F(JsonStorageTest, Update) {
     JsonStorage<TestData> storage(m_filePath);
 
-    // 初始写入
+    // Initial write
     TestData data{"initial", 10};
     storage.write(data);
 
-    // 更新
+    // Update
     auto updateResult = storage.update([](const TestData* current) -> TestData {
         TestData updated;
         if (current != nullptr) {
@@ -104,7 +104,7 @@ TEST_F(JsonStorageTest, Update) {
     });
     EXPECT_TRUE(updateResult.success());
 
-    // 验证
+    // Verify
     auto readResult = storage.read();
     EXPECT_TRUE(readResult.success());
     EXPECT_EQ(readResult.value().name, "initial_updated");
@@ -157,7 +157,7 @@ TEST_F(JsonStorageTest, FilePathAccessor) {
 }
 
 TEST_F(JsonStorageTest, ReadInvalidJson) {
-    // 手动写入无效 JSON
+    // Manually write invalid JSON
     std::ofstream file(m_filePath);
     file << "not valid json {{{";
 
@@ -173,11 +173,11 @@ TEST_F(JsonStorageTest, JsonFormatIsPretty) {
     TestData data{"formatted", 42};
     storage.write(data);
 
-    // 验证文件格式是缩进的
+    // Verify file format is indented
     std::ifstream file(m_filePath);
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
-    // 应该有换行和缩进
+    // Should have newlines and indentation
     EXPECT_NE(content.find('\n'), std::string::npos);
-    EXPECT_NE(content.find("  "), std::string::npos); // 2空格缩进
+    EXPECT_NE(content.find("  "), std::string::npos); // 2-space indentation
 }

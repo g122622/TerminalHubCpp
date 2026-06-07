@@ -3,7 +3,7 @@
 
 using namespace th::ipc;
 
-// === CommandType 转换 ===
+// === CommandType Conversion ===
 
 TEST(IpcMessage, CommandTypeToString) {
     EXPECT_EQ(commandTypeToString(CommandType::List), "list");
@@ -26,10 +26,10 @@ TEST(IpcMessage, CommandTypeFromString) {
     EXPECT_EQ(commandTypeFromString("input"), CommandType::Input);
     EXPECT_EQ(commandTypeFromString("resize"), CommandType::Resize);
     EXPECT_EQ(commandTypeFromString("shutdown"), CommandType::Shutdown);
-    EXPECT_EQ(commandTypeFromString("unknown"), CommandType::List); // 默认
+    EXPECT_EQ(commandTypeFromString("unknown"), CommandType::List); // Default
 }
 
-// === EventType 转换 ===
+// === EventType Conversion ===
 
 TEST(IpcMessage, EventTypeToString) {
     EXPECT_EQ(eventTypeToString(EventType::Output), "output");
@@ -47,7 +47,7 @@ TEST(IpcMessage, EventTypeFromString) {
     EXPECT_EQ(eventTypeFromString("error"), EventType::Error);
 }
 
-// === IpcRequest 序列化 ===
+// === IpcRequest Serialization ===
 
 TEST(IpcMessage, RequestSerialize) {
     IpcRequest req;
@@ -77,7 +77,7 @@ TEST(IpcMessage, RequestDeserializeInvalid) {
     EXPECT_FALSE(IpcRequest::deserialize(R"({"type":"response"})").has_value());
 }
 
-// === IpcResponse 序列化 ===
+// === IpcResponse Serialization ===
 
 TEST(IpcMessage, ResponseSerializeSuccess) {
     IpcResponse resp;
@@ -96,12 +96,12 @@ TEST(IpcMessage, ResponseSerializeError) {
     IpcResponse resp;
     resp.id = "req-1";
     resp.success = false;
-    resp.error = "会话不存在";
+    resp.error = "Session not found";
 
     std::string json = resp.serialize();
 
     EXPECT_NE(json.find("\"success\":false"), std::string::npos);
-    EXPECT_NE(json.find("会话不存在"), std::string::npos);
+    EXPECT_NE(json.find("Session not found"), std::string::npos);
 }
 
 TEST(IpcMessage, ResponseDeserializeSuccess) {
@@ -115,15 +115,15 @@ TEST(IpcMessage, ResponseDeserializeSuccess) {
 }
 
 TEST(IpcMessage, ResponseDeserializeError) {
-    std::string json = R"({"type":"response","id":"req-1","success":false,"error":"未知命令"})";
+    std::string json = R"({"type":"response","id":"req-1","success":false,"error":"Unknown command"})";
 
     auto resp = IpcResponse::deserialize(json);
     ASSERT_TRUE(resp.has_value());
     EXPECT_FALSE(resp->success);
-    EXPECT_EQ(resp->error, "未知命令");
+    EXPECT_EQ(resp->error, "Unknown command");
 }
 
-// === IpcEvent 序列化 ===
+// === IpcEvent Serialization ===
 
 TEST(IpcMessage, EventSerialize) {
     IpcEvent evt;
@@ -148,7 +148,7 @@ TEST(IpcMessage, EventDeserialize) {
     EXPECT_EQ(evt->data["code"], 0);
 }
 
-// === Payload 序列化 ===
+// === Payload Serialization ===
 
 TEST(IpcMessage, NewSessionPayloadRoundTrip) {
     NewSessionPayload p;
@@ -241,7 +241,7 @@ TEST(IpcMessage, KillPayloadRoundTrip) {
     EXPECT_EQ(p2.sessionId, "th_xyz");
 }
 
-// === UUID 生成 ===
+// === UUID Generation ===
 
 TEST(IpcMessage, GenerateRequestId) {
     std::string id1 = generateRequestId();
@@ -249,7 +249,7 @@ TEST(IpcMessage, GenerateRequestId) {
 
     EXPECT_FALSE(id1.empty());
     EXPECT_FALSE(id2.empty());
-    EXPECT_NE(id1, id2); // 应该是唯一的
+    EXPECT_NE(id1, id2); // Should be unique
 }
 
 TEST(IpcMessage, GenerateSessionId) {
@@ -257,7 +257,7 @@ TEST(IpcMessage, GenerateSessionId) {
     std::string id2 = generateSessionId();
 
     EXPECT_NE(id1, id2);
-    // 格式: th_{timestamp}_{hex}
+    // Format: th_{timestamp}_{hex}
     EXPECT_EQ(id1.substr(0, 3), "th_");
     EXPECT_NE(id1.find('_', 3), std::string::npos);
 }

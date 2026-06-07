@@ -20,19 +20,19 @@ namespace th {
 
 using namespace ipc;
 
-// 全局指针，用于信号处理
+// Global pointers for signal handling
 static IpcServer* g_server = nullptr;
 static SessionManager* g_sessionMgr = nullptr;
 static std::mutex g_shutdownMutex;
 
 // ============================================================
-// Ctrl+C / 关闭信号处理
+// Ctrl+C / close signal handling
 // ============================================================
 
 static BOOL WINAPI consoleCtrlHandler(DWORD ctrlType) {
     if (ctrlType == CTRL_C_EVENT || ctrlType == CTRL_BREAK_EVENT ||
         ctrlType == CTRL_CLOSE_EVENT) {
-        Logger::info("收到关闭信号，正在停止...");
+        Logger::info("Shutdown signal received, stopping...");
 
         std::lock_guard<std::mutex> lock(g_shutdownMutex);
         if (g_server) {
@@ -53,39 +53,39 @@ bool DaemonMain::isDaemonProcess() {
 }
 
 // ============================================================
-// 主循环
+// Main loop
 // ============================================================
 
 int DaemonMain::run() {
-    // 加载配置
+    // Load config
     ConfigManager configMgr;
     auto loadResult = configMgr.load();
     if (!loadResult.success()) {
-        // 尝试初始化
+        // Try initializing
         auto initResult = ConfigManager::init();
         if (!initResult.success()) {
-            std::cerr << "配置初始化失败: " << initResult.error().message() << "\n";
+            std::cerr << "Config init failed: " << initResult.error().message() << "\n";
             return 1;
         }
         loadResult = configMgr.load();
         if (!loadResult.success()) {
-            std::cerr << "配置加载失败: " << loadResult.error().message() << "\n";
+            std::cerr << "Config load failed: " << loadResult.error().message() << "\n";
             return 1;
         }
     }
 
     const Config& config = *configMgr.get();
 
-    // 初始化日志
+    // Initialize logger
     LogLevel logLevel = LogLevel::Info;
     if (config.daemon.logLevel == "debug") logLevel = LogLevel::Debug;
     else if (config.daemon.logLevel == "warn") logLevel = LogLevel::Warn;
     else if (config.daemon.logLevel == "error") logLevel = LogLevel::Error;
     Logger::init(logLevel, "Daemon");
 
-    Logger::info("TerminalHub Daemon 启动中...");
+    Logger::info("TerminalHub Daemon starting...");
 
-    // 写入 PID 文件
+    // Write PID file
     auto pidPath = Paths::daemonPidPath();
     {
         std::ofstream pidFile(pidPath);
@@ -95,14 +95,14 @@ int DaemonMain::run() {
     }
     Logger::info("PID: " + std::to_string(GetCurrentProcessId()));
 
-    // 初始化会话管理器
+    // Initialize session manager
     SessionManager sessionMgr(config);
     sessionMgr.initialize();
 
-    // 启动 IPC 服务器
+    // Start IPC server
     IpcServer server(config.daemon.socketPath);
 
-    // 注册命令处理器
+    // Register command handlers
 
     // list
     server.onCommand(CommandType::List,
@@ -168,30 +168,30 @@ int DaemonMain::run() {
             auto p = AttachSessionPayload::fromJson(payload);
             Session* session = sessionMgr.getSession(p.sessionId);
             if (!session) {
-                throw std::runtime_error("会话不存在: " + p.sessionId);
+                throw std::runtime_error("Session not found: " + p.sessionId);
             }
 
             session->addClient(clientId);
             session->touch();
 
-            // 调整 PTY 大小
+            // Resize PTY
             if (session->ptyProcess && p.cols && p.rows) {
                 session->ptyProcess->resize(*p.cols, *p.rows);
             }
 
-            // 订阅会话输出
+            // Subscribe to session output (per-client listener)
             std::string sid = p.sessionId;
-            session->onOutput([&server, clientId, sid](const std::string& data) {
+            session->addOutputListener(clientId, [&server, clientId, sid](const std::string& data) {
                 server.sendToClient(clientId, EventType::Output,
                                     nlohmann::json(data), sid);
             });
 
-            session->onExit([&server, clientId, sid](u32 exitCode) {
+            session->addExitListener(clientId, [&server, clientId, sid](u32 exitCode) {
                 server.sendToClient(clientId, EventType::Exit,
                                     {{"code", exitCode}}, sid);
             });
 
-            // 返回历史输出
+            // Return history output
             auto history = session->outputBuffer.getRecentLines();
             nlohmann::json historyArr = nlohmann::json::array();
             for (const auto& line : history) {
@@ -206,7 +206,7 @@ int DaemonMain::run() {
             auto p = InputPayload::fromJson(payload);
             Session* session = sessionMgr.getSession(p.sessionId);
             if (!session || !session->ptyProcess) {
-                throw std::runtime_error("会话不存在或已结束: " + p.sessionId);
+                throw std::runtime_error("Session not found or exited: " + p.sessionId);
             }
             session->ptyProcess->write(p.data);
             session->touch();
@@ -219,13 +219,13 @@ int DaemonMain::run() {
             auto p = ResizePayload::fromJson(payload);
             Session* session = sessionMgr.getSession(p.sessionId);
             if (!session || !session->ptyProcess) {
-                throw std::runtime_error("会话不存在或已结束: " + p.sessionId);
+                throw std::runtime_error("Session not found or exited: " + p.sessionId);
             }
             session->ptyProcess->resize(p.cols, p.rows);
             return nullptr;
         });
 
-    // detach - 从会话移除客户端
+    // detach - remove client from session
     server.onCommand(CommandType::Detach,
         [&sessionMgr](const nlohmann::json& payload, u64 clientId) -> nlohmann::json {
             auto p = AttachSessionPayload::fromJson(payload);
@@ -239,7 +239,7 @@ int DaemonMain::run() {
     // shutdown
     server.onCommand(CommandType::Shutdown,
         [&server](const nlohmann::json& /*payload*/, u64 /*clientId*/) -> nlohmann::json {
-        // 在另一个线程中延迟停止，避免死锁
+        // Delayed stop in another thread to avoid deadlock
         std::thread([&server]() {
             Sleep(100);
             server.stop();
@@ -247,9 +247,9 @@ int DaemonMain::run() {
         return {{"result", true}};
     });
 
-    // 客户端断开处理
+    // Client disconnect handling
     server.onClientDisconnect([&sessionMgr](u64 clientId) {
-        // 从所有会话中移除该客户端
+        // Remove client from all sessions
         auto sessions = sessionMgr.listSessions();
         for (const auto& item : sessions) {
             Session* session = sessionMgr.getSession(item.id);
@@ -259,35 +259,35 @@ int DaemonMain::run() {
         }
     });
 
-    // 注册信号处理
+    // Register signal handler
     SetConsoleCtrlHandler(consoleCtrlHandler, TRUE);
 
-    // 保存全局指针
+    // Save global pointers
     {
         std::lock_guard<std::mutex> lock(g_shutdownMutex);
         g_server = &server;
         g_sessionMgr = &sessionMgr;
     }
 
-    // 启动 IPC 服务器（阻塞）
+    // Start IPC server (blocking)
     if (!server.start()) {
-        Logger::error("IPC 服务器启动失败");
+        Logger::error("IPC server failed to start");
         return 1;
     }
 
-    Logger::info("IPC 服务器已启动: " + config.daemon.socketPath);
+    Logger::info("IPC server started: " + config.daemon.socketPath);
 
-    // 等待服务器停止
-    // IPC 服务器在 stop() 被调用后才会返回
-    // 这里用简单的循环等待
+    // Wait for server to stop
+    // IPC server returns only after stop() is called
+    // Simple loop to keep process alive
     while (true) {
         Sleep(1000);
     }
 
-    // 清理 PID 文件
+    // Cleanup PID file
     std::filesystem::remove(pidPath);
 
-    Logger::info("Daemon 已停止");
+    Logger::info("Daemon stopped");
     return 0;
 }
 

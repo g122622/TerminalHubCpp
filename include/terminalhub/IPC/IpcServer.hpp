@@ -17,125 +17,125 @@
 namespace th::ipc {
 
 /**
- * @brief 命令处理器类型
+ * @brief Command handler type
  *
- * @param payload 请求 payload（JSON 对象）
- * @param clientId 客户端标识（用于 sendToClient）
- * @return 响应数据（JSON），或抛出异常时由服务器构造错误响应
+ * @param payload Request payload (JSON object)
+ * @param clientId Client identifier (for sendToClient)
+ * @return Response data (JSON), or the server constructs an error response on exception
  */
 using CommandHandler = std::function<nlohmann::json(const nlohmann::json& payload, u64 clientId)>;
 
 /**
- * @brief IOCP Named Pipe 服务器
+ * @brief IOCP Named Pipe server
  *
- * 运行在 Daemon 进程中，处理 CLI 客户端请求。
- * 使用换行符分隔的 JSON 协议。
+ * Runs in the Daemon process, handles CLI client requests.
+ * Uses newline-delimited JSON protocol.
  */
 class IpcServer {
 public:
     explicit IpcServer(const std::string& pipeName);
     ~IpcServer();
 
-    // 禁止拷贝
+    // Non-copyable
     IpcServer(const IpcServer&) = delete;
     IpcServer& operator=(const IpcServer&) = delete;
 
     /**
-     * @brief 注册命令处理器
+     * @brief Register a command handler
      */
     void onCommand(CommandType command, CommandHandler handler);
 
     /**
-     * @brief 启动服务器
+     * @brief Start the server
      */
     bool start();
 
     /**
-     * @brief 停止服务器
+     * @brief Stop the server
      */
     void stop();
 
     /**
-     * @brief 向所有客户端广播事件
+     * @brief Broadcast an event to all clients
      */
     void broadcast(EventType eventType, const nlohmann::json& data,
                    const std::string& sessionId = "");
 
     /**
-     * @brief 向特定客户端发送事件
+     * @brief Send an event to a specific client
      */
     void sendToClient(u64 clientId, EventType eventType, const nlohmann::json& data,
                       const std::string& sessionId = "");
 
     /**
-     * @brief 获取连接的客户端数量
+     * @brief Get the number of connected clients
      */
     size_t getClientCount() const;
 
     /**
-     * @brief 设置客户端连接回调
+     * @brief Set client connect callback
      */
     void onClientConnect(std::function<void(u64 clientId)> callback);
 
     /**
-     * @brief 设置客户端断开回调
+     * @brief Set client disconnect callback
      */
     void onClientDisconnect(std::function<void(u64 clientId)> callback);
 
 private:
     /**
-     * @brief IOCP 工作线程
+     * @brief IOCP worker thread
      */
     void _workerThread();
 
     /**
-     * @brief 接受新连接
+     * @brief Accept a new connection
      */
     void _acceptConnection();
 
     /**
-     * @brief 处理完成端口通知
+     * @brief Handle completion port notifications
      */
     void _handleCompletion(DWORD bytesTransferred, ULONG_PTR completionKey,
                            OVERLAPPED* overlapped);
 
     /**
-     * @brief 投递异步读操作
+     * @brief Post an async read operation
      */
     void _postRead(u64 clientId);
 
     /**
-     * @brief 处理接收到的数据（按 \n 分帧）
+     * @brief Handle received data (framed by \n)
      */
     void _handleData(u64 clientId, const std::string& data);
 
     /**
-     * @brief 处理请求
+     * @brief Handle a request
      */
     void _handleRequest(u64 clientId, const IpcRequest& request);
 
     /**
-     * @brief 发送原始数据到客户端
+     * @brief Send raw data to a client
      */
     void _sendRaw(u64 clientId, const std::string& data);
 
     /**
-     * @brief 清理客户端资源
+     * @brief Clean up client resources
      */
     void _cleanupClient(u64 clientId);
 
-    std::string m_pipeName;  // Named Pipe 名称（如 \\.\pipe\terminalhub）
+    std::string m_pipeName;  // Named Pipe name (e.g. \\.\pipe\terminalhub)
 
     // IOCP
     HANDLE m_hCompletionPort{nullptr};
     HANDLE m_hStopEvent{nullptr};
 
-    // 客户端信息
+    // Client info
     struct ClientContext {
         HANDLE hPipe{INVALID_HANDLE_VALUE};
         OVERLAPPED overlapped{};
         char readBuffer[4096]{};
-        std::string lineBuffer;  // 不完整行的缓冲
+        std::string lineBuffer;  // Incomplete line buffer
         bool connected{false};
     };
 
@@ -143,14 +143,14 @@ private:
     std::unordered_map<u64, std::unique_ptr<ClientContext>> m_clients;
     u64 m_nextClientId{1};
 
-    // 命令处理器
+    // Command handlers
     std::unordered_map<CommandType, CommandHandler> m_handlers;
 
-    // 回调
+    // Callbacks
     std::function<void(u64)> m_onClientConnect;
     std::function<void(u64)> m_onClientDisconnect;
 
-    // 工作线程
+    // Worker threads
     std::vector<std::thread> m_workers;
     volatile bool m_running{false};
 };

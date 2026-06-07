@@ -11,27 +11,27 @@
 namespace th {
 
 /**
- * @brief 通用 JSON 文件存储
+ * @brief Generic JSON file storage
  *
- * 提供对 JSON 文件的读写、更新和删除操作。
- * 写入时自动创建父目录。
+ * Provides read, write, update and delete operations on JSON files.
+ * Automatically creates parent directories on write.
  *
- * @tparam T 存储的数据类型（需要 nlohmann_json 的 from_json/to_json 支持）
+ * @tparam T Data type to store (requires nlohmann_json from_json/to_json support)
  */
 template<typename T>
 class JsonStorage {
 public:
     /**
-     * @brief 构造 JSON 存储
-     * @param filePath JSON 文件路径
+     * @brief Construct JSON storage
+     * @param filePath JSON file path
      */
     explicit JsonStorage(std::filesystem::path filePath)
         : m_filePath(std::move(filePath)) {
     }
 
     /**
-     * @brief 读取数据
-     * @return 数据，文件不存在或解析失败时返回错误
+     * @brief Read data
+     * @return Data, or error if file not found or parse failure
      */
     [[nodiscard]] Result<T> read() const {
         if (!std::filesystem::exists(m_filePath)) {
@@ -62,13 +62,13 @@ public:
     }
 
     /**
-     * @brief 写入数据
-     * @param data 要写入的数据
-     * @return 成功或错误
+     * @brief Write data
+     * @param data Data to write
+     * @return Success or error
      */
     Result<void> write(const T& data) {
         try {
-            // 自动创建父目录
+            // Auto-create parent directories
             auto parentDir = m_filePath.parent_path();
             if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
                 std::filesystem::create_directories(parentDir);
@@ -92,9 +92,9 @@ public:
     }
 
     /**
-     * @brief 读取-修改-写入
-     * @param updater 接收当前数据（可能为空），返回更新后的数据
-     * @return 成功或错误
+     * @brief Read-modify-write
+     * @param updater Receives current data (may be null), returns updated data
+     * @return Success or error
      */
     Result<void> update(std::function<T(const T*)> updater) {
         T current{};
@@ -109,8 +109,8 @@ public:
     }
 
     /**
-     * @brief 删除文件
-     * @return 成功（文件不存在也返回成功）或错误
+     * @brief Delete the file
+     * @return Success (also succeeds if file does not exist) or error
      */
     Result<void> deleteFile() {
         try {
@@ -126,14 +126,14 @@ public:
     }
 
     /**
-     * @brief 检查文件是否存在
+     * @brief Check if the file exists
      */
     [[nodiscard]] bool exists() const {
         return std::filesystem::exists(m_filePath);
     }
 
     /**
-     * @brief 获取文件路径
+     * @brief Get the file path
      */
     [[nodiscard]] const std::filesystem::path& filePath() const {
         return m_filePath;

@@ -19,7 +19,7 @@ namespace th {
 using namespace ipc;
 
 // ============================================================
-// 辅助函数
+// Helper functions
 // ============================================================
 
 static std::string formatTimestamp(i64 ms) {
@@ -44,8 +44,8 @@ static void printError(const std::string& msg) {
 }
 
 /**
- * @brief 确保守护进程正在运行
- * @return 成功返回 true
+ * @brief Ensure the daemon is running, start it if not
+ * @return true on success
  */
 static bool ensureDaemonRunning(const Config& config) {
     std::string pipePath = config.daemon.socketPath;
@@ -54,7 +54,7 @@ static bool ensureDaemonRunning(const Config& config) {
         return true;
     }
 
-    // 启动守护进程
+    // Launch daemon process
     char exePath[MAX_PATH];
     GetModuleFileNameA(nullptr, exePath, MAX_PATH);
 
@@ -64,7 +64,7 @@ static bool ensureDaemonRunning(const Config& config) {
     si.cb = sizeof(STARTUPINFOW);
     PROCESS_INFORMATION pi{};
 
-    // 构建环境块
+    // Build environment block
     LPWCH currentEnv = GetEnvironmentStringsW();
     std::wstring envBlock;
     if (currentEnv) {
@@ -95,14 +95,14 @@ static bool ensureDaemonRunning(const Config& config) {
         &pi);
 
     if (!ok) {
-        printError("无法启动守护进程: " + std::to_string(GetLastError()));
+        printError("Failed to start daemon: " + std::to_string(GetLastError()));
         return false;
     }
 
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    // 等待守护进程就绪（最多 10 次，每次 500ms）
+    // Wait for daemon to be ready (up to 10 attempts, 500ms each)
     for (int i = 0; i < 10; i++) {
         Sleep(500);
         if (IpcClient::isDaemonRunning(pipePath)) {
@@ -110,12 +110,12 @@ static bool ensureDaemonRunning(const Config& config) {
         }
     }
 
-    printError("守护进程启动超时");
+    printError("Daemon startup timed out");
     return false;
 }
 
 // ============================================================
-// 命令实现
+// Command implementations
 // ============================================================
 
 static int cmdInit() {
@@ -124,7 +124,7 @@ static int cmdInit() {
         printError(result.error().message());
         return 1;
     }
-    printSuccess("配置已初始化");
+    printSuccess("Configuration initialized");
     return 0;
 }
 
@@ -134,7 +134,7 @@ static int cmdNew(const std::string& title, const std::string& shell,
     auto loadResult = configMgr.load();
     if (!loadResult.success()) {
         printError(loadResult.error().message());
-        printInfo("请先运行 'th init' 初始化配置");
+        printInfo("Run 'th init' first to initialize configuration");
         return 1;
     }
 
@@ -150,7 +150,7 @@ static int cmdNew(const std::string& title, const std::string& shell,
         return 1;
     }
 
-    // 构建请求 payload
+    // Build request payload
     nlohmann::json payload;
     if (!title.empty()) payload["title"] = title;
     if (!shell.empty()) payload["shell"] = shell;
@@ -173,9 +173,9 @@ static int cmdNew(const std::string& title, const std::string& shell,
     std::string sessionId = data.value("sessionId", "");
     std::string sessionTitle = data.value("title", "");
 
-    printSuccess("创建会话成功: " + sessionId);
-    printInfo("标题: " + sessionTitle);
-    printInfo("使用 'th attach " + sessionId + "' 连接到此会话");
+    printSuccess("Session created: " + sessionId);
+    printInfo("Title: " + sessionTitle);
+    printInfo("Use 'th attach " + sessionId + "' to connect to this session");
 
     client.disconnect();
     return 0;
@@ -214,11 +214,11 @@ static int cmdList() {
     }
 
     if (!data.is_array() || data.empty()) {
-        printInfo("没有活跃的会话");
+        printInfo("No active sessions");
         return 0;
     }
 
-    std::cout << "\n  \x1b[1;36m活跃会话列表\x1b[0m\n\n";
+    std::cout << "\n  \x1b[1;36mActive Sessions\x1b[0m\n\n";
 
     for (const auto& session : data) {
         std::string id = session.value("id", "");
@@ -233,12 +233,12 @@ static int cmdList() {
         if (alive) {
             std::cout << "  \x1b[32m[" << id << "]\x1b[0m " << title << "\n";
         } else {
-            std::cout << "  \x1b[33m[" << id << "]\x1b[0m " << title << " (已停止)\n";
+            std::cout << "  \x1b[33m[" << id << "]\x1b[0m " << title << " (stopped)\n";
         }
         std::cout << "    Shell: " << shell << " | PID: " << pid
-                  << " | 客户端: " << clients << "\n";
-        std::cout << "    创建时间: " << formatTimestamp(createdAt) << "\n";
-        std::cout << "    最后活动: " << formatTimestamp(lastActivity) << "\n\n";
+                  << " | Clients: " << clients << "\n";
+        std::cout << "    Created: " << formatTimestamp(createdAt) << "\n";
+        std::cout << "    Last activity: " << formatTimestamp(lastActivity) << "\n\n";
     }
 
     client.disconnect();
@@ -282,9 +282,9 @@ static int cmdKill(const std::string& sessionId) {
 
     bool success = data.value("result", false);
     if (success) {
-        printSuccess("会话 " + sessionId + " 已终止");
+        printSuccess("Session " + sessionId + " terminated");
     } else {
-        printError("会话 " + sessionId + " 不存在或已结束");
+        printError("Session " + sessionId + " not found or already exited");
     }
 
     client.disconnect();
@@ -329,9 +329,9 @@ static int cmdRename(const std::string& sessionId, const std::string& newTitle) 
 
     bool success = data.value("result", false);
     if (success) {
-        printSuccess("会话已重命名为: " + newTitle);
+        printSuccess("Session renamed to: " + newTitle);
     } else {
-        printError("会话 " + sessionId + " 不存在");
+        printError("Session " + sessionId + " not found");
     }
 
     client.disconnect();
@@ -358,7 +358,7 @@ static int cmdAttach(const std::string& sessionId) {
         return 1;
     }
 
-    // 获取终端尺寸
+    // Get terminal size
     i32 cols = config.terminal.cols;
     i32 rows = config.terminal.rows;
     HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -368,7 +368,7 @@ static int cmdAttach(const std::string& sessionId) {
         rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
     }
 
-    // 发送 attach 请求
+    // Send attach request
     AttachSessionPayload payload;
     payload.sessionId = sessionId;
     payload.cols = cols;
@@ -386,9 +386,9 @@ static int cmdAttach(const std::string& sessionId) {
         return 1;
     }
 
-    // 显示历史输出
+    // Display history output
     if (data.contains("history") && data["history"].is_array()) {
-        // 清屏
+        // Clear screen
         HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
         COORD coord{0, 0};
         DWORD count;
@@ -404,9 +404,9 @@ static int cmdAttach(const std::string& sessionId) {
         }
     }
 
-    printInfo("已连接到会话 " + sessionId + "，按 Ctrl+D 退出");
+    printInfo("Connected to session " + sessionId + ", press Ctrl+D to exit");
 
-    // 设置 raw mode
+    // Set raw mode
     HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
     DWORD oldInputMode = 0;
     GetConsoleMode(hStdIn, &oldInputMode);
@@ -416,12 +416,12 @@ static int cmdAttach(const std::string& sessionId) {
     newInputMode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
     SetConsoleMode(hStdIn, newInputMode);
 
-    // 设置输出支持 VT 序列
+    // Enable VT sequences on output
     DWORD oldOutputMode = 0;
     GetConsoleMode(hStdOut, &oldOutputMode);
     SetConsoleMode(hStdOut, oldOutputMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
-    // 设置事件回调
+    // Set event callback
     bool exiting = false;
     client.onEvent([&sessionId, &exiting](const IpcEvent& event) {
         if (event.eventType == EventType::Output && event.sessionId == sessionId) {
@@ -429,12 +429,12 @@ static int cmdAttach(const std::string& sessionId) {
                 std::cout << event.data.get<std::string>() << std::flush;
             }
         } else if (event.eventType == EventType::Exit && event.sessionId == sessionId) {
-            printInfo("\n会话已结束");
+            printInfo("\nSession exited");
             exiting = true;
         }
     });
 
-    // 输入循环
+    // Input loop
     INPUT_RECORD records[16];
     while (!exiting) {
         DWORD eventsRead = 0;
@@ -443,98 +443,113 @@ static int cmdAttach(const std::string& sessionId) {
         }
 
         for (DWORD i = 0; i < eventsRead; i++) {
-            if (records[i].EventType != KEY_EVENT) continue;
-            auto& keyEvent = records[i].Event.KeyEvent;
+            if (records[i].EventType == KEY_EVENT) {
+                auto& keyEvent = records[i].Event.KeyEvent;
 
-            if (!keyEvent.bKeyDown) continue;
+                if (!keyEvent.bKeyDown) continue;
 
-            // Ctrl+D 退出
-            if (keyEvent.wVirtualKeyCode == 0x44 && // 'D'
-                (keyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) {
-                exiting = true;
-                break;
-            }
+                // Ctrl+D to exit
+                if (keyEvent.wVirtualKeyCode == 0x44 && // 'D'
+                    (keyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) {
+                    exiting = true;
+                    break;
+                }
 
-            // 获取输入字符
-            if (keyEvent.uChar.UnicodeChar != 0) {
-                char buf[8] = {};
-                int len = WideCharToMultiByte(CP_UTF8, 0,
-                    &keyEvent.uChar.UnicodeChar, 1, buf, sizeof(buf), nullptr, nullptr);
-                if (len > 0) {
-                    InputPayload payload;
-                    payload.sessionId = sessionId;
-                    payload.data = std::string(buf, len);
-                    client.request(CommandType::Input, payload.toJson(), 0);
+                // Get input character
+                if (keyEvent.uChar.UnicodeChar != 0) {
+                    char buf[8] = {};
+                    int len = WideCharToMultiByte(CP_UTF8, 0,
+                        &keyEvent.uChar.UnicodeChar, 1, buf, sizeof(buf), nullptr, nullptr);
+                    if (len > 0) {
+                        InputPayload payload;
+                        payload.sessionId = sessionId;
+                        payload.data = std::string(buf, len);
+                        client.request(CommandType::Input, payload.toJson(), 0);
+                    }
+                }
+            } else if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
+                // Terminal resize event
+                CONSOLE_SCREEN_BUFFER_INFO csbi2;
+                if (GetConsoleScreenBufferInfo(hStdOut, &csbi2)) {
+                    i32 newCols = csbi2.srWindow.Right - csbi2.srWindow.Left + 1;
+                    i32 newRows = csbi2.srWindow.Bottom - csbi2.srWindow.Top + 1;
+                    if (newCols > 0 && newRows > 0) {
+                        ResizePayload resizePayload;
+                        resizePayload.sessionId = sessionId;
+                        resizePayload.cols = newCols;
+                        resizePayload.rows = newRows;
+                        client.request(CommandType::Resize, resizePayload.toJson(), 0);
+                    }
                 }
             }
         }
     }
 
-    // 恢复控制台模式
+    // Restore console mode
     SetConsoleMode(hStdIn, oldInputMode);
     SetConsoleMode(hStdOut, oldOutputMode);
 
     client.disconnect();
-    printInfo("已断开会话连接");
+    printInfo("Disconnected from session");
     return 0;
 }
 
 // ============================================================
-// 主入口
+// Main entry
 // ============================================================
 
 int CliApp::run(int argc, char* argv[]) {
-    CLI::App app{"TerminalHub - 终端会话管理器"};
+    CLI::App app{"TerminalHub - Terminal session manager"};
     app.set_version_flag("-v,--version", "1.0.0");
 
-    // init 命令
-    app.add_subcommand("init", "初始化配置")->callback([]() {
+    // init command
+    app.add_subcommand("init", "Initialize configuration")->callback([]() {
         return cmdInit();
     });
 
-    // new 命令
-    auto* newCmd = app.add_subcommand("new", "创建新会话");
+    // new command
+    auto* newCmd = app.add_subcommand("new", "Create a new session");
     std::string newTitle;
     std::string newShell;
     std::string newCwd;
     i32 newCols = 0;
     i32 newRows = 0;
-    newCmd->add_option("-t,--title", newTitle, "会话标题");
-    newCmd->add_option("-s,--shell", newShell, "Shell 类型");
-    newCmd->add_option("-d,--cwd", newCwd, "工作目录");
-    newCmd->add_option("--cols", newCols, "终端列数");
-    newCmd->add_option("--rows", newRows, "终端行数");
+    newCmd->add_option("-t,--title", newTitle, "Session title");
+    newCmd->add_option("-s,--shell", newShell, "Shell type");
+    newCmd->add_option("-d,--cwd", newCwd, "Working directory");
+    newCmd->add_option("--cols", newCols, "Terminal columns");
+    newCmd->add_option("--rows", newRows, "Terminal rows");
     newCmd->callback([&]() {
         return cmdNew(newTitle, newShell, newCwd, newCols, newRows);
     });
 
-    // list 命令
-    app.add_subcommand("list", "列出活跃会话")->callback([]() {
+    // list command
+    app.add_subcommand("list", "List active sessions")->callback([]() {
         return cmdList();
     });
 
-    // attach 命令
+    // attach command
     std::string attachSessionId;
-    auto* attachCmd = app.add_subcommand("attach", "连接到会话");
-    attachCmd->add_option("session-id", attachSessionId, "会话 ID")->required();
+    auto* attachCmd = app.add_subcommand("attach", "Connect to a session");
+    attachCmd->add_option("session-id", attachSessionId, "Session ID")->required();
     attachCmd->callback([&]() {
         return cmdAttach(attachSessionId);
     });
 
-    // kill 命令
+    // kill command
     std::string killSessionId;
-    auto* killCmd = app.add_subcommand("kill", "终止会话");
-    killCmd->add_option("session-id", killSessionId, "会话 ID")->required();
+    auto* killCmd = app.add_subcommand("kill", "Terminate a session");
+    killCmd->add_option("session-id", killSessionId, "Session ID")->required();
     killCmd->callback([&]() {
         return cmdKill(killSessionId);
     });
 
-    // rename 命令
+    // rename command
     std::string renameSessionId;
     std::string renameNewTitle;
-    auto* renameCmd = app.add_subcommand("rename", "重命名会话");
-    renameCmd->add_option("session-id", renameSessionId, "会话 ID")->required();
-    renameCmd->add_option("new-title", renameNewTitle, "新标题")->required();
+    auto* renameCmd = app.add_subcommand("rename", "Rename a session");
+    renameCmd->add_option("session-id", renameSessionId, "Session ID")->required();
+    renameCmd->add_option("new-title", renameNewTitle, "New title")->required();
     renameCmd->callback([&]() {
         return cmdRename(renameSessionId, renameNewTitle);
     });

@@ -11,7 +11,7 @@
 
 namespace th {
 
-// SessionMetadata 的 JSON 序列化
+// JSON serialization for SessionMetadata
 static nlohmann::json metadataToJson(const SessionMetadata& m) {
     return {
         {"id", m.id},
@@ -39,7 +39,7 @@ static SessionMetadata jsonToMetadata(const nlohmann::json& j) {
 }
 
 // ============================================================
-// 构造
+// Construction
 // ============================================================
 
 SessionRegistry::SessionRegistry()
@@ -47,7 +47,7 @@ SessionRegistry::SessionRegistry()
 }
 
 // ============================================================
-// 加载所有
+// Load all
 // ============================================================
 
 std::vector<SessionMetadata> SessionRegistry::loadAll() {
@@ -68,7 +68,7 @@ std::vector<SessionMetadata> SessionRegistry::loadAll() {
 }
 
 // ============================================================
-// 保存
+// Save
 // ============================================================
 
 void SessionRegistry::save(const SessionMetadata& metadata) {
@@ -82,7 +82,7 @@ void SessionRegistry::save(const SessionMetadata& metadata) {
 }
 
 // ============================================================
-// 删除
+// Remove
 // ============================================================
 
 void SessionRegistry::remove(const std::string& sessionId) {
@@ -96,7 +96,7 @@ void SessionRegistry::remove(const std::string& sessionId) {
 }
 
 // ============================================================
-// 获取单个
+// Get single
 // ============================================================
 
 std::optional<SessionMetadata> SessionRegistry::get(const std::string& sessionId) {
@@ -110,7 +110,7 @@ std::optional<SessionMetadata> SessionRegistry::get(const std::string& sessionId
 }
 
 // ============================================================
-// 列表（带存活状态）
+// List (with alive status)
 // ============================================================
 
 std::vector<SessionListItem> SessionRegistry::list() {
@@ -130,7 +130,7 @@ std::vector<SessionListItem> SessionRegistry::list() {
         items.push_back(item);
     }
 
-    // 按最后活动时间降序排序
+    // Sort by last activity time descending
     std::sort(items.begin(), items.end(),
               [](const SessionListItem& a, const SessionListItem& b) {
                   return a.lastActivityAt > b.lastActivityAt;
@@ -140,7 +140,7 @@ std::vector<SessionListItem> SessionRegistry::list() {
 }
 
 // ============================================================
-// 清理已死亡的会话
+// Cleanup dead sessions
 // ============================================================
 
 std::vector<std::string> SessionRegistry::cleanup() {
@@ -168,7 +168,7 @@ std::vector<std::string> SessionRegistry::cleanup() {
 }
 
 // ============================================================
-// 检查进程是否存活
+// Check if process is alive
 // ============================================================
 
 bool SessionRegistry::_isProcessAlive(DWORD pid) {

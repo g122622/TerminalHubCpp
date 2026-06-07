@@ -12,7 +12,7 @@
 namespace th::ipc {
 
 // ============================================================
-// 构造/析构
+// Construction / Destruction
 // ============================================================
 
 IpcClient::IpcClient() = default;
@@ -22,15 +22,15 @@ IpcClient::~IpcClient() {
 }
 
 // ============================================================
-// 连接
+// Connect
 // ============================================================
 
 Result<void> IpcClient::connect(const std::string& pipePath) {
     if (m_hPipe != INVALID_HANDLE_VALUE) {
-        return Result<void>::err(Error::ipcError("已连接", "IpcClient::connect"));
+        return Result<void>::err(Error::ipcError("Already connected", "IpcClient::connect"));
     }
 
-    // 确保 Windows Named Pipe 格式
+    // Ensure Windows Named Pipe format
     std::string fullPath = pipePath;
     if (fullPath.find("\\\\") == std::string::npos) {
         fullPath = "\\\\.\\pipe\\" + fullPath;
@@ -38,7 +38,7 @@ Result<void> IpcClient::connect(const std::string& pipePath) {
 
     std::wstring wPipeName(fullPath.begin(), fullPath.end());
 
-    // 尝试连接 Named Pipe
+    // Try to open Named Pipe
     HANDLE hPipe = CreateFileW(
         wPipeName.c_str(),
         GENERIC_READ | GENERIC_WRITE,
@@ -51,25 +51,25 @@ Result<void> IpcClient::connect(const std::string& pipePath) {
     if (hPipe == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
         return Result<void>::err(
-            Error::ipcError("无法连接到 Daemon: " + std::to_string(err),
+            Error::ipcError("Failed to connect to daemon: " + std::to_string(err),
                             "IpcClient::connect"));
     }
 
-    // 设置管道模式为字节流
+    // Set pipe mode to byte stream
     DWORD mode = PIPE_READMODE_BYTE;
     SetNamedPipeHandleState(hPipe, &mode, nullptr, nullptr);
 
     m_hPipe = hPipe;
     m_running = true;
 
-    // 启动读取线程
+    // Start read thread
     m_readThread = std::thread([this]() { _readThreadFunc(); });
 
     return Result<void>::ok();
 }
 
 // ============================================================
-// 断开连接
+// Disconnect
 // ============================================================
 
 void IpcClient::disconnect() {
@@ -79,7 +79,7 @@ void IpcClient::disconnect() {
 
     m_running = false;
 
-    // 取消 IO 以让 ReadFile 退出
+    // Cancel IO to let ReadFile exit
     CancelIoEx(m_hPipe, nullptr);
 
     if (m_readThread.joinable()) {
@@ -89,7 +89,7 @@ void IpcClient::disconnect() {
     CloseHandle(m_hPipe);
     m_hPipe = INVALID_HANDLE_VALUE;
 
-    // 拒绝所有等待中的请求
+    // Reject all pending requests
     {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
         for (auto& [id, pending] : m_pendingRequests) {
@@ -102,7 +102,7 @@ void IpcClient::disconnect() {
 }
 
 // ============================================================
-// 发送请求
+// Send request
 // ============================================================
 
 Result<nlohmann::json> IpcClient::request(CommandType command,
@@ -110,7 +110,7 @@ Result<nlohmann::json> IpcClient::request(CommandType command,
                                             u32 timeoutMs) {
     if (m_hPipe == INVALID_HANDLE_VALUE) {
         return Result<nlohmann::json>::err(
-            Error::ipcError("未连接到 Daemon", "IpcClient::request"));
+            Error::ipcError("Not connected to daemon", "IpcClient::request"));
     }
 
     std::string id = generateRequestId();
@@ -120,18 +120,18 @@ Result<nlohmann::json> IpcClient::request(CommandType command,
     req.command = command;
     req.payload = payload;
 
-    // 创建等待中的请求
+    // Create pending request
     auto pending = std::make_shared<PendingRequest>();
     {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
         m_pendingRequests[id] = pending;
     }
 
-    // 发送请求
+    // Send request
     std::string json = req.serialize() + "\n";
     _sendRaw(json);
 
-    // 等待响应
+    // Wait for response
     auto future = pending->promise.get_future();
     if (timeoutMs == 0) {
         future.wait();
@@ -141,11 +141,11 @@ Result<nlohmann::json> IpcClient::request(CommandType command,
             std::lock_guard<std::mutex> lock(m_pendingMutex);
             m_pendingRequests.erase(id);
             return Result<nlohmann::json>::err(
-                Error::ipcError("请求超时", "IpcClient::request"));
+                Error::ipcError("Request timed out", "IpcClient::request"));
         }
     }
 
-    // 清理
+    // Cleanup
     {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
         m_pendingRequests.erase(id);
@@ -156,7 +156,7 @@ Result<nlohmann::json> IpcClient::request(CommandType command,
 }
 
 // ============================================================
-// 连接状态
+// Connection state
 // ============================================================
 
 bool IpcClient::isConnected() const {
@@ -168,7 +168,7 @@ void IpcClient::onEvent(std::function<void(const IpcEvent&)> callback) {
 }
 
 // ============================================================
-// 静态方法：检测 Daemon 是否运行
+// Static: check if daemon is running
 // ============================================================
 
 bool IpcClient::isDaemonRunning(const std::string& pipePath) {
@@ -197,7 +197,7 @@ bool IpcClient::isDaemonRunning(const std::string& pipePath) {
 }
 
 // ============================================================
-// 读取线程
+// Read thread
 // ============================================================
 
 void IpcClient::_readThreadFunc() {
@@ -215,7 +215,7 @@ void IpcClient::_readThreadFunc() {
         if (!ok) {
             DWORD err = GetLastError();
             if (err == ERROR_IO_PENDING) {
-                // 等待完成
+                // Wait for completion
                 DWORD waitResult = WaitForSingleObject(overlapped.hEvent, 500);
                 if (waitResult == WAIT_OBJECT_0) {
                     ok = GetOverlappedResult(m_hPipe, &overlapped, &bytesRead, FALSE);
@@ -246,7 +246,7 @@ void IpcClient::_readThreadFunc() {
 }
 
 // ============================================================
-// 处理接收数据
+// Process received data
 // ============================================================
 
 void IpcClient::_handleData(const std::string& data) {
@@ -262,7 +262,7 @@ void IpcClient::_handleData(const std::string& data) {
             continue;
         }
 
-        // 尝试解析为响应
+        // Try to parse as response
         auto response = IpcResponse::deserialize(line);
         if (response) {
             std::lock_guard<std::mutex> lock(m_pendingMutex);
@@ -271,7 +271,7 @@ void IpcClient::_handleData(const std::string& data) {
                 if (response->success) {
                     it->second->promise.set_value(response->data);
                 } else {
-                    // 失败时设置空 JSON，错误信息通过 Result 传递
+                    // On failure, set empty JSON with error info
                     nlohmann::json errorData;
                     errorData["_error"] = response->error;
                     it->second->promise.set_value(errorData);
@@ -280,14 +280,14 @@ void IpcClient::_handleData(const std::string& data) {
             continue;
         }
 
-        // 尝试解析为事件
+        // Try to parse as event
         auto event = IpcEvent::deserialize(line);
         if (event && m_onEvent) {
             m_onEvent(*event);
         }
     }
 
-    // 保留不完整的行
+    // Keep incomplete line
     if (start < m_lineBuffer.size()) {
         m_lineBuffer = m_lineBuffer.substr(start);
     } else {
@@ -296,7 +296,7 @@ void IpcClient::_handleData(const std::string& data) {
 }
 
 // ============================================================
-// 发送原始数据
+// Send raw data
 // ============================================================
 
 void IpcClient::_sendRaw(const std::string& data) {

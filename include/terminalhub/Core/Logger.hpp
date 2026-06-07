@@ -11,7 +11,7 @@ class logger;
 namespace th {
 
 /**
- * @brief 日志级别
+ * @brief Log level
  */
 enum class LogLevel {
     Debug,
@@ -21,19 +21,19 @@ enum class LogLevel {
 };
 
 /**
- * @brief 日志器，封装 spdlog
+ * @brief Logger, wraps spdlog
  */
 class Logger {
 public:
     /**
-     * @brief 初始化日志系统
-     * @param level 日志级别
-     * @param prefix 日志前缀（默认 "TerminalHub"）
+     * @brief Initialize the logging system
+     * @param level Log level
+     * @param prefix Log prefix (default "TerminalHub")
      */
     static void init(LogLevel level, std::string_view prefix = "TerminalHub");
 
     /**
-     * @brief 获取底层 spdlog logger
+     * @brief Get the underlying spdlog logger
      */
     static std::shared_ptr<spdlog::logger> get();
 

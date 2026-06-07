@@ -8,11 +8,11 @@
 #include <string>
 
 int main(int argc, char* argv[]) {
-    // 检测守护进程模式
+    // Detect daemon mode
     if (th::DaemonMain::isDaemonProcess()) {
         return th::DaemonMain::run();
     }
 
-    // CLI 模式
+    // CLI mode
     return th::CliApp::run(argc, argv);
 }

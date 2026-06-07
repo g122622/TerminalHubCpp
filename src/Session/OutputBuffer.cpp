@@ -14,13 +14,13 @@ void OutputBuffer::write(std::string_view data) {
         return;
     }
 
-    // 与原版 TypeScript 行为一致：按 \n 分割，每个子串作为一行写入
-    // TS 的 data.split("\n") 行为：
-    //   "a\nb"     → ["a", "b"]      （2行）
-    //   "a\nb\n"   → ["a", "b", ""]  （3行，尾部空串也写入）
-    //   "\n"       → ["", ""]        （2行）
-    //   "single"   → ["single"]      （1行）
-    //   ""         → 跳过（原版 if (line === "" && lines.length === 1) continue）
+    // Match original TypeScript behavior: split by \n, write each substring as a line
+    // TS data.split("\n") behavior:
+    //   "a\nb"     -> ["a", "b"]      (2 lines)
+    //   "a\nb\n"   -> ["a", "b", ""]  (3 lines, trailing empty string is written)
+    //   "\n"       -> ["", ""]        (2 lines)
+    //   "single"   -> ["single"]      (1 line)
+    //   ""         -> skipped (original: if (line === "" && lines.length === 1) continue)
 
     size_t start = 0;
     size_t pos = 0;
@@ -37,13 +37,13 @@ void OutputBuffer::write(std::string_view data) {
         start = pos + 1;
     }
 
-    // 处理 \n 之后的剩余部分
+    // Handle remaining part after last \n
     std::string_view remaining = data.substr(start);
 
-    // 原版 TS 的关键逻辑：
+    // Original TS key logic:
     // if (line === "" && lines.length === 1) continue;
-    // 即：只有当整个输入不含 \n 且为空字符串时才跳过
-    // 其他情况（含 \n 产生的空串，或非空尾部）都要写入
+    // i.e. only skip when entire input has no \n and is empty string
+    // Other cases (empty from \n, or non-empty trailing) are written
     if (!remaining.empty()) {
         m_buffer[static_cast<size_t>(m_cursor)] = std::string(remaining);
         m_cursor = (m_cursor + 1) % m_maxSize;
@@ -51,30 +51,30 @@ void OutputBuffer::write(std::string_view data) {
             m_count++;
         }
     } else if (lineCount > 0) {
-        // 数据以 \n 结尾，尾部空串需要写入
-        // 这与 TS split 的行为一致："a\nb\n" → ["a", "b", ""]
+        // Data ends with \n, trailing empty string needs to be written
+        // This matches TS split behavior: "a\nb\n" -> ["a", "b", ""]
         m_buffer[static_cast<size_t>(m_cursor)] = "";
         m_cursor = (m_cursor + 1) % m_maxSize;
         if (m_count < m_maxSize) {
             m_count++;
         }
     }
-    // else: remaining 为空且 lineCount == 0
-    // 即 data 是空字符串，已在开头 return
+    // else: remaining is empty and lineCount == 0
+    // i.e. data is empty string, already returned at the beginning
 }
 
 std::vector<std::string> OutputBuffer::getRecentLines(i32 n) const {
     std::vector<std::string> lines;
     i32 targetCount = (n <= 0) ? m_count : std::min(n, m_count);
 
-    // 计算起始位置：从最近 targetCount 行中最旧的那行开始
-    // 当 n < count 时，需要跳过 count - n 行
+    // Calculate start position: begin from the oldest line in targetCount
+    // When n < count, need to skip count - n older lines
     i32 start = 0;
     if (m_count >= m_maxSize) {
-        // 缓冲区已满，cursor 指向最旧行
+        // Buffer is full, cursor points to the oldest line
         start = m_cursor;
     }
-    // 跳过多余的旧行，只取最近 targetCount 行
+    // Skip excess older lines, only take the most recent targetCount lines
     i32 skip = m_count - targetCount;
     start = (start + skip) % m_maxSize;
 

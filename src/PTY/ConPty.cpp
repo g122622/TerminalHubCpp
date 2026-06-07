@@ -14,7 +14,7 @@
 namespace th {
 
 // ============================================================
-// 辅助函数
+// Helper functions
 // ============================================================
 
 std::string getDefaultShell(const std::string& configShell) {
@@ -24,32 +24,32 @@ std::string getDefaultShell(const std::string& configShell) {
     if (configShell == "bash") {
         return "bash";
     }
-    // 默认 powershell
+    // Default to powershell
     return "powershell.exe";
 }
 
 // ============================================================
-// ConPty 实现
+// ConPty implementation
 // ============================================================
 
 Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
-    // 验证参数
+    // Validate arguments
     if (options.shell.empty()) {
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("shell 路径不能为空", "ConPty::create"));
+            Error::ptyError("Shell path cannot be empty", "ConPty::create"));
     }
     if (options.cols <= 0 || options.rows <= 0) {
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("终端尺寸必须为正整数", "ConPty::create"));
+            Error::ptyError("Terminal dimensions must be positive", "ConPty::create"));
     }
 
     auto pty = std::unique_ptr<ConPty>(new ConPty());
     pty->m_cols = options.cols;
     pty->m_rows = options.rows;
 
-    // 创建管道对
-    // hPipePTYIn  → ConPTY 读取端（宿主通过 hPipeIn 写入）
-    // hPipePTYOut → ConPTY 写入端（宿主通过 hPipeOut 读取）
+    // Create pipe pairs
+    // hPipePTYIn  -> ConPTY read side (host writes via hPipeIn)
+    // hPipePTYOut -> ConPTY write side (host reads via hPipeOut)
     HANDLE hPipePTYIn = INVALID_HANDLE_VALUE;
     HANDLE hPipeIn = INVALID_HANDLE_VALUE;
     HANDLE hPipePTYOut = INVALID_HANDLE_VALUE;
@@ -60,23 +60,23 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
     sa.bInheritHandle = TRUE;
     sa.lpSecurityDescriptor = nullptr;
 
-    // 创建输入管道（宿主写 → PTY 读）
+    // Create input pipe (host write -> PTY read)
     if (!CreatePipe(&hPipePTYIn, &hPipeIn, &sa, 0)) {
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("创建输入管道失败: " + std::to_string(GetLastError()),
+            Error::ptyError("Failed to create input pipe: " + std::to_string(GetLastError()),
                             "ConPty::create"));
     }
 
-    // 创建输出管道（PTY 写 → 宿主读）
+    // Create output pipe (PTY write -> host read)
     if (!CreatePipe(&hPipeOut, &hPipePTYOut, &sa, 0)) {
         CloseHandle(hPipePTYIn);
         CloseHandle(hPipeIn);
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("创建输出管道失败: " + std::to_string(GetLastError()),
+            Error::ptyError("Failed to create output pipe: " + std::to_string(GetLastError()),
                             "ConPty::create"));
     }
 
-    // 创建伪控制台
+    // Create pseudo console
     COORD consoleSize;
     consoleSize.X = static_cast<SHORT>(options.cols);
     consoleSize.Y = static_cast<SHORT>(options.rows);
@@ -88,22 +88,22 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
         CloseHandle(hPipePTYOut);
         CloseHandle(hPipeOut);
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("CreatePseudoConsole 失败: " + std::to_string(hr),
+            Error::ptyError("CreatePseudoConsole failed: " + std::to_string(hr),
                             "ConPty::create"));
     }
 
-    // ConPTY 已复制管道句柄，关闭 PTY 侧的句柄
+    // ConPTY has copied the pipe handles, close PTY-side handles
     CloseHandle(hPipePTYIn);
     CloseHandle(hPipePTYOut);
 
     pty->m_hPipeIn = hPipeIn;
     pty->m_hPipeOut = hPipeOut;
 
-    // 准备 STARTUPINFOEX
+    // Prepare STARTUPINFOEX
     STARTUPINFOEXW siEx{};
     siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
 
-    // 初始化进程线程属性列表
+    // Initialize process thread attribute list
     SIZE_T attrListSize = 0;
     InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
 
@@ -115,12 +115,12 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
         CloseHandle(pty->m_hPipeIn);
         CloseHandle(pty->m_hPipeOut);
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("InitializeProcThreadAttributeList 失败: " +
+            Error::ptyError("InitializeProcThreadAttributeList failed: " +
                             std::to_string(GetLastError()),
                             "ConPty::create"));
     }
 
-    // 设置伪控制台属性
+    // Set pseudo console attribute
     if (!UpdateProcThreadAttribute(siEx.lpAttributeList, 0,
                                     PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
                                     pty->m_hPc, sizeof(pty->m_hPc),
@@ -130,18 +130,18 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
         CloseHandle(pty->m_hPipeIn);
         CloseHandle(pty->m_hPipeOut);
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("UpdateProcThreadAttribute 失败: " +
+            Error::ptyError("UpdateProcThreadAttribute failed: " +
                             std::to_string(GetLastError()),
                             "ConPty::create"));
     }
 
-    // 构建命令行
+    // Build command line
     std::wstring wCmdLine(options.shell.begin(), options.shell.end());
 
-    // 构建环境块
+    // Build environment block
     std::wstring envBlock;
     if (!options.env.empty() || true) {
-        // 获取当前进程环境块，追加 TERM=xterm-256color
+        // Get current process environment, append TERM=xterm-256color
         LPWCH currentEnv = GetEnvironmentStringsW();
         if (currentEnv) {
             LPWCH p = currentEnv;
@@ -153,11 +153,11 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
             FreeEnvironmentStringsW(currentEnv);
         }
 
-        // 追加 TERM
+        // Append TERM
         envBlock.append(L"TERM=xterm-256color");
         envBlock.push_back(L'\0');
 
-        // 追加用户自定义环境变量
+        // Append user-defined environment variables
         for (const auto& [key, value] : options.env) {
             std::wstring entry(key.begin(), key.end());
             entry += L'=';
@@ -165,16 +165,16 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
             envBlock.append(entry);
             envBlock.push_back(L'\0');
         }
-        envBlock.push_back(L'\0'); // 双 null 终止
+        envBlock.push_back(L'\0'); // Double null terminator
     }
 
-    // 工作目录
+    // Working directory
     std::wstring wCwd;
     if (!options.cwd.empty()) {
         wCwd = std::wstring(options.cwd.begin(), options.cwd.end());
     }
 
-    // 创建进程
+    // Create process
     PROCESS_INFORMATION pi{};
     DWORD creationFlags = EXTENDED_STARTUPINFO_PRESENT;
 
@@ -198,7 +198,7 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
         CloseHandle(pty->m_hPipeIn);
         CloseHandle(pty->m_hPipeOut);
         return Result<std::unique_ptr<ConPty>>::err(
-            Error::ptyError("CreateProcess 失败: " + std::to_string(GetLastError()),
+            Error::ptyError("CreateProcess failed: " + std::to_string(GetLastError()),
                             "ConPty::create"));
     }
 
@@ -206,10 +206,10 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
     pty->m_pid = pi.dwProcessId;
     CloseHandle(pi.hThread);
 
-    Logger::info("ConPTY 进程已启动: PID=" + std::to_string(pty->m_pid) +
+    Logger::info("ConPTY process started: PID=" + std::to_string(pty->m_pid) +
                  " shell=" + options.shell);
 
-    // 启动读取线程
+    // Start read thread
     pty->m_running = true;
     pty->m_hReadThread = reinterpret_cast<HANDLE>(
         _beginthreadex(nullptr, 0,
@@ -219,7 +219,7 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
             },
             pty.get(), 0, nullptr));
 
-    // 启动退出监听线程
+    // Start exit watch thread
     pty->m_hExitThread = reinterpret_cast<HANDLE>(
         _beginthreadex(nullptr, 0,
             [](void* arg) -> unsigned {
@@ -234,20 +234,20 @@ Result<std::unique_ptr<ConPty>> ConPty::create(const ConPtyOptions& options) {
 ConPty::~ConPty() {
     m_running = false;
 
-    // 关闭写入端
+    // Close write end
     if (m_hPipeIn != INVALID_HANDLE_VALUE) {
         CloseHandle(m_hPipeIn);
         m_hPipeIn = INVALID_HANDLE_VALUE;
     }
 
-    // 关闭读取端（取消 IO 让 ReadFile 退出）
+    // Close read end (cancel IO to let ReadFile exit)
     if (m_hPipeOut != INVALID_HANDLE_VALUE) {
         CancelIoEx(m_hPipeOut, nullptr);
         CloseHandle(m_hPipeOut);
         m_hPipeOut = INVALID_HANDLE_VALUE;
     }
 
-    // 等待线程退出
+    // Wait for threads to exit
     if (m_hReadThread) {
         WaitForSingleObject(m_hReadThread, 3000);
         CloseHandle(m_hReadThread);
@@ -260,13 +260,13 @@ ConPty::~ConPty() {
         m_hExitThread = nullptr;
     }
 
-    // 关闭伪控制台
+    // Close pseudo console
     if (m_hPc) {
         ClosePseudoConsole(m_hPc);
         m_hPc = nullptr;
     }
 
-    // 关闭进程句柄
+    // Close process handle
     if (m_hProcess) {
         CloseHandle(m_hProcess);
         m_hProcess = nullptr;
@@ -348,7 +348,7 @@ void ConPty::resize(i32 cols, i32 rows) {
         m_cols = cols;
         m_rows = rows;
     } else {
-        Logger::warn("ResizePseudoConsole 失败: " + std::to_string(hr));
+        Logger::warn("ResizePseudoConsole failed: " + std::to_string(hr));
     }
 }
 

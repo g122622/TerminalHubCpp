@@ -7,7 +7,7 @@
 
 namespace th {
 
-// Paths 实现
+// Paths implementation
 
 std::filesystem::path Paths::terminalHubDir() {
     // Windows: %USERPROFILE%\.terminalhub
@@ -15,7 +15,7 @@ std::filesystem::path Paths::terminalHubDir() {
     if (userProfile != nullptr) {
         return std::filesystem::path(userProfile) / ".terminalhub";
     }
-    // 回退到 HOME
+    // Fallback to HOME
     const char* home = std::getenv("HOME");
     if (home != nullptr) {
         return std::filesystem::path(home) / ".terminalhub";
@@ -39,14 +39,14 @@ std::filesystem::path Paths::logsDir() {
     return terminalHubDir() / "logs";
 }
 
-// ConfigManager 实现
+// ConfigManager implementation
 
 Result<Config> ConfigManager::load() {
     auto configPath = Paths::configPath();
 
     if (!std::filesystem::exists(configPath)) {
         return Result<Config>::err(Error::configError(
-            "配置文件不存在: " + configPath.string() + "\n请运行 'th init' 初始化配置",
+            "Config file not found: " + configPath.string() + "\nRun 'th init' to initialize configuration",
             "ConfigManager::load"));
     }
 
@@ -54,7 +54,7 @@ Result<Config> ConfigManager::load() {
         std::ifstream file(configPath);
         if (!file.is_open()) {
             return Result<Config>::err(Error::ioError(
-                "无法打开配置文件: " + configPath.string(),
+                "Unable to open config file: " + configPath.string(),
                 "ConfigManager::load"));
         }
 
@@ -89,7 +89,7 @@ Result<Config> ConfigManager::load() {
             config.terminal.rows = t.value("rows", 24);
         }
 
-        // 验证必填字段
+        // Validate required fields
         auto validateResult = validate(config);
         if (!validateResult.success()) {
             return Result<Config>::err(std::move(validateResult.error()));
@@ -101,11 +101,11 @@ Result<Config> ConfigManager::load() {
 
     } catch (const nlohmann::json::parse_error& e) {
         return Result<Config>::err(Error::configError(
-            "配置文件格式错误: " + configPath.string() + "\n" + e.what(),
+            "Invalid config file format: " + configPath.string() + "\n" + e.what(),
             "ConfigManager::load"));
     } catch (const std::exception& e) {
         return Result<Config>::err(Error::ioError(
-            "读取配置文件失败: " + configPath.string() + "\n" + e.what(),
+            "Failed to read config file: " + configPath.string() + "\n" + e.what(),
             "ConfigManager::load"));
     }
 }
@@ -123,7 +123,7 @@ Result<void> ConfigManager::init() {
     auto configPath = Paths::configPath();
 
     try {
-        // 创建目录
+        // Create directories
         if (!std::filesystem::exists(dir)) {
             std::filesystem::create_directories(dir);
         }
@@ -132,12 +132,12 @@ Result<void> ConfigManager::init() {
             std::filesystem::create_directories(logsDir);
         }
 
-        // 配置文件已存在则不覆盖
+        // Don't overwrite existing config
         if (std::filesystem::exists(configPath)) {
             return Result<void>::ok();
         }
 
-        // 生成默认配置
+        // Generate default config
         Config defaultConfig;
         defaultConfig.daemon.socketPath = (dir / "daemon.sock").string();
 
@@ -154,7 +154,7 @@ Result<void> ConfigManager::init() {
         std::ofstream file(configPath);
         if (!file.is_open()) {
             return Result<void>::err(Error::ioError(
-                "无法创建配置文件: " + configPath.string(),
+                "Failed to create config file: " + configPath.string(),
                 "ConfigManager::init"));
         }
 
@@ -163,60 +163,60 @@ Result<void> ConfigManager::init() {
 
     } catch (const std::exception& e) {
         return Result<void>::err(Error::ioError(
-            "初始化失败: " + std::string(e.what()),
+            "Init failed: " + std::string(e.what()),
             "ConfigManager::init"));
     }
 }
 
 Result<void> ConfigManager::validate(const Config& config) const {
-    // 必填字段验证
+    // Required field validation
     if (config.daemon.socketPath.empty()) {
         return Result<void>::err(Error::configError(
-            "配置项缺失: daemon.socketPath",
+            "Missing config: daemon.socketPath",
             "ConfigManager::validate"));
     }
 
     if (config.daemon.logLevel.empty()) {
         return Result<void>::err(Error::configError(
-            "配置项缺失: daemon.logLevel",
+            "Missing config: daemon.logLevel",
             "ConfigManager::validate"));
     }
 
-    // 验证 logLevel 值
+    // Validate logLevel value
     if (config.daemon.logLevel != "debug" && config.daemon.logLevel != "info"
         && config.daemon.logLevel != "warn" && config.daemon.logLevel != "error") {
         return Result<void>::err(Error::configError(
-            "配置项无效: daemon.logLevel 必须是 debug|info|warn|error",
+            "Invalid config: daemon.logLevel must be debug|info|warn|error",
             "ConfigManager::validate"));
     }
 
     if (config.session.outputBufferLines <= 0) {
         return Result<void>::err(Error::configError(
-            "配置项无效: session.outputBufferLines 必须是正整数",
+            "Invalid config: session.outputBufferLines must be positive",
             "ConfigManager::validate"));
     }
 
     if (config.session.titleMaxLength <= 0) {
         return Result<void>::err(Error::configError(
-            "配置项无效: session.titleMaxLength 必须是正整数",
+            "Invalid config: session.titleMaxLength must be positive",
             "ConfigManager::validate"));
     }
 
     if (config.session.defaultShell.empty()) {
         return Result<void>::err(Error::configError(
-            "配置项缺失: session.defaultShell",
+            "Missing config: session.defaultShell",
             "ConfigManager::validate"));
     }
 
     if (config.terminal.cols <= 0) {
         return Result<void>::err(Error::configError(
-            "配置项无效: terminal.cols 必须是正整数",
+            "Invalid config: terminal.cols must be positive",
             "ConfigManager::validate"));
     }
 
     if (config.terminal.rows <= 0) {
         return Result<void>::err(Error::configError(
-            "配置项无效: terminal.rows 必须是正整数",
+            "Invalid config: terminal.rows must be positive",
             "ConfigManager::validate"));
     }
 
@@ -224,8 +224,8 @@ Result<void> ConfigManager::validate(const Config& config) const {
 }
 
 std::string ConfigManager::getNestedValue(const std::string& json, std::string_view path) {
-    // 辅助方法，用于从 JSON 字符串中获取嵌套值
-    // 目前未使用，保留供将来扩展
+    // Helper method for getting nested values from JSON string
+    // Currently unused, kept for future extension
     (void)json;
     (void)path;
     return {};

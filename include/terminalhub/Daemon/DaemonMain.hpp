@@ -5,21 +5,21 @@
 namespace th {
 
 /**
- * @brief 守护进程入口
+ * @brief Daemon entry point
  *
- * 通过环境变量 TERMINALHUB_DAEMON=1 识别。
- * 加载配置 → 初始化会话管理器 → 启动 IPC 服务器 → 注册命令处理器 → 运行。
+ * Identified by the environment variable TERMINALHUB_DAEMON=1.
+ * Load config -> initialize session manager -> start IPC server -> register command handlers -> run.
  */
 class DaemonMain {
 public:
     /**
-     * @brief 运行守护进程主循环
-     * @return 退出码
+     * @brief Run the daemon main loop
+     * @return Exit code
      */
     static int run();
 
     /**
-     * @brief 检查当前进程是否为守护进程
+     * @brief Check if the current process is a daemon
      */
     static bool isDaemonProcess();
 };

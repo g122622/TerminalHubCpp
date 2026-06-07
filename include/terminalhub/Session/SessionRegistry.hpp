@@ -15,49 +15,49 @@
 namespace th {
 
 /**
- * @brief 会话持久化存储
+ * @brief Session persistent storage
  *
- * 使用 JSON 文件存储会话元数据。
- * 路径: ~/.terminalhub/sessions.json
+ * Stores session metadata using a JSON file.
+ * Path: ~/.terminalhub/sessions.json
  */
 class SessionRegistry {
 public:
     SessionRegistry();
 
     /**
-     * @brief 加载所有会话元数据
+     * @brief Load all session metadata
      */
     std::vector<SessionMetadata> loadAll();
 
     /**
-     * @brief 保存会话元数据
+     * @brief Save session metadata
      */
     void save(const SessionMetadata& metadata);
 
     /**
-     * @brief 删除会话元数据
+     * @brief Remove session metadata
      */
     void remove(const std::string& sessionId);
 
     /**
-     * @brief 获取单个会话
+     * @brief Get a single session
      */
     std::optional<SessionMetadata> get(const std::string& sessionId);
 
     /**
-     * @brief 获取会话列表（带存活状态）
+     * @brief Get session list (with alive status)
      */
     std::vector<SessionListItem> list();
 
     /**
-     * @brief 清理已死亡的会话
-     * @return 被清理的会话 ID 列表
+     * @brief Clean up dead sessions
+     * @return List of removed session IDs
      */
     std::vector<std::string> cleanup();
 
 private:
     /**
-     * @brief 检查进程是否存活
+     * @brief Check if a process is alive
      */
     static bool _isProcessAlive(DWORD pid);
 

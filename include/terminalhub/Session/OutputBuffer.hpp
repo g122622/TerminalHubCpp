@@ -8,49 +8,49 @@
 namespace th {
 
 /**
- * @brief 环形缓冲区，用于存储会话输出历史
+ * @brief Ring buffer for storing session output history
  *
- * 按 \n 分行存储，当缓冲区满时覆盖最旧的行。
- * 读取时从最旧行开始，保持时间顺序。
+ * Stores data split by \n, overwriting the oldest lines when full.
+ * Reads start from the oldest line, preserving chronological order.
  */
 class OutputBuffer {
 public:
     /**
-     * @brief 构造环形缓冲区
-     * @param maxSize 最大行数，必须为正整数
+     * @brief Construct a ring buffer
+     * @param maxSize Maximum number of lines, must be positive
      */
     explicit OutputBuffer(i32 maxSize);
 
     /**
-     * @brief 写入数据，按 \n 分行存储
-     * @param data 原始输出数据
+     * @brief Write data, split by \n into lines
+     * @param data Raw output data
      */
     void write(std::string_view data);
 
     /**
-     * @brief 获取最近 N 行
-     * @param n 行数，0 表示获取全部
-     * @return 从最旧到最新的行列表
+     * @brief Get the most recent N lines
+     * @param n Number of lines, 0 means all
+     * @return List of lines from oldest to newest
      */
     [[nodiscard]] std::vector<std::string> getRecentLines(i32 n = 0) const;
 
     /**
-     * @brief 获取所有内容，用 \n 连接
+     * @brief Get all content joined by \n
      */
     [[nodiscard]] std::string getAll() const;
 
     /**
-     * @brief 清空缓冲区
+     * @brief Clear the buffer
      */
     void clear();
 
     /**
-     * @brief 获取当前行数
+     * @brief Get the current number of lines
      */
     [[nodiscard]] i32 size() const;
 
     /**
-     * @brief 获取最大行数
+     * @brief Get the maximum number of lines
      */
     [[nodiscard]] i32 maxSize() const;
 

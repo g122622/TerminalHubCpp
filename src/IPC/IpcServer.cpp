@@ -10,17 +10,17 @@
 
 namespace th::ipc {
 
-// 完成端口自定义键值
+// IOCP completion port custom keys
 static constexpr ULONG_PTR COMPLETION_KEY_SHUTDOWN = 0;
 static constexpr ULONG_PTR COMPLETION_KEY_IO       = 1;
 
 // ============================================================
-// 构造/析构
+// Construction / Destruction
 // ============================================================
 
 IpcServer::IpcServer(const std::string& pipeName)
     : m_pipeName(pipeName) {
-    // 确保 Windows Named Pipe 格式
+    // Ensure Windows Named Pipe format
     if (m_pipeName.find("\\\\") == std::string::npos) {
         m_pipeName = "\\\\.\\pipe\\" + m_pipeName;
     }
@@ -31,7 +31,7 @@ IpcServer::~IpcServer() {
 }
 
 // ============================================================
-// 命令注册
+// Command registration
 // ============================================================
 
 void IpcServer::onCommand(CommandType command, CommandHandler handler) {
@@ -39,7 +39,7 @@ void IpcServer::onCommand(CommandType command, CommandHandler handler) {
 }
 
 // ============================================================
-// 启动
+// Start
 // ============================================================
 
 bool IpcServer::start() {
@@ -47,17 +47,17 @@ bool IpcServer::start() {
         return true;
     }
 
-    // 创建停止事件
+    // Create stop event
     m_hStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (!m_hStopEvent) {
-        Logger::error("创建停止事件失败: " + std::to_string(GetLastError()));
+        Logger::error("Failed to create stop event: " + std::to_string(GetLastError()));
         return false;
     }
 
-    // 创建 IOCP
+    // Create IOCP
     m_hCompletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
     if (!m_hCompletionPort) {
-        Logger::error("创建 IOCP 失败: " + std::to_string(GetLastError()));
+        Logger::error("Failed to create IOCP: " + std::to_string(GetLastError()));
         CloseHandle(m_hStopEvent);
         m_hStopEvent = nullptr;
         return false;
@@ -65,21 +65,21 @@ bool IpcServer::start() {
 
     m_running = true;
 
-    // 启动工作线程（数量 = CPU 核心数）
+    // Start worker threads (count = CPU cores)
     DWORD threadCount = static_cast<DWORD>(std::max<unsigned int>(1u, std::thread::hardware_concurrency()));
     for (DWORD i = 0; i < threadCount; i++) {
         m_workers.emplace_back([this]() { _workerThread(); });
     }
 
-    // 创建初始的 pipe 实例来接受连接
+    // Create initial pipe instance to accept connections
     _acceptConnection();
 
-    Logger::info("IPC 服务器已启动: " + m_pipeName);
+    Logger::info("IPC server started: " + m_pipeName);
     return true;
 }
 
 // ============================================================
-// 停止
+// Stop
 // ============================================================
 
 void IpcServer::stop() {
@@ -89,7 +89,7 @@ void IpcServer::stop() {
 
     m_running = false;
 
-    // 通知工作线程退出
+    // Notify worker threads to exit
     if (m_hCompletionPort) {
         for (size_t i = 0; i < m_workers.size(); i++) {
             PostQueuedCompletionStatus(m_hCompletionPort, 0,
@@ -101,7 +101,7 @@ void IpcServer::stop() {
         SetEvent(m_hStopEvent);
     }
 
-    // 等待工作线程
+    // Wait for worker threads
     for (auto& t : m_workers) {
         if (t.joinable()) {
             t.join();
@@ -109,7 +109,7 @@ void IpcServer::stop() {
     }
     m_workers.clear();
 
-    // 关闭所有客户端
+    // Close all clients
     {
         std::lock_guard<std::mutex> lock(m_clientsMutex);
         for (auto& [id, ctx] : m_clients) {
@@ -131,11 +131,11 @@ void IpcServer::stop() {
         m_hStopEvent = nullptr;
     }
 
-    Logger::info("IPC 服务器已停止");
+    Logger::info("IPC server stopped");
 }
 
 // ============================================================
-// 广播/发送
+// Broadcast / Send
 // ============================================================
 
 void IpcServer::broadcast(EventType eventType, const nlohmann::json& data,
@@ -180,7 +180,7 @@ void IpcServer::_sendRaw(u64 clientId, const std::string& data) {
 }
 
 // ============================================================
-// 客户端信息
+// Client info
 // ============================================================
 
 size_t IpcServer::getClientCount() const {
@@ -197,7 +197,7 @@ void IpcServer::onClientDisconnect(std::function<void(u64)> callback) {
 }
 
 // ============================================================
-// IOCP 工作线程
+// IOCP worker thread
 // ============================================================
 
 void IpcServer::_workerThread() {
@@ -220,8 +220,8 @@ void IpcServer::_workerThread() {
 
         if (!ok) {
             if (overlapped) {
-                // IO 失败 → 客户端断开
-                // 找到对应的客户端 ID
+                // IO failure -> client disconnected
+                // Find the corresponding client ID
                 std::lock_guard<std::mutex> lock(m_clientsMutex);
                 for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
                     if (&it->second->overlapped == overlapped) {
@@ -242,7 +242,7 @@ void IpcServer::_workerThread() {
             continue;
         }
 
-        // 找到对应的客户端
+        // Find the corresponding client
         u64 clientId = 0;
         {
             std::lock_guard<std::mutex> lock(m_clientsMutex);
@@ -258,7 +258,7 @@ void IpcServer::_workerThread() {
             continue;
         }
 
-        // 处理读取到的数据
+        // Process received data
         {
             std::lock_guard<std::mutex> lock(m_clientsMutex);
             auto it = m_clients.find(clientId);
@@ -272,17 +272,17 @@ void IpcServer::_workerThread() {
 
         _handleData(clientId, "");
 
-        // 继续投递读操作
+        // Post next read
         _postRead(clientId);
     }
 }
 
 // ============================================================
-// 接受连接
+// Accept connections
 // ============================================================
 
 void IpcServer::_acceptConnection() {
-    // 创建 Named Pipe 实例
+    // Create Named Pipe instance
     std::wstring wPipeName(m_pipeName.begin(), m_pipeName.end());
 
     HANDLE hPipe = CreateNamedPipeW(
@@ -290,26 +290,26 @@ void IpcServer::_acceptConnection() {
         PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
         PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
         PIPE_UNLIMITED_INSTANCES,
-        65536,  // 输出缓冲区大小
-        65536,  // 输入缓冲区大小
-        0,      // 默认超时
+        65536,  // Output buffer size
+        65536,  // Input buffer size
+        0,      // Default timeout
         nullptr);
 
     if (hPipe == INVALID_HANDLE_VALUE) {
-        Logger::error("CreateNamedPipe 失败: " + std::to_string(GetLastError()));
+        Logger::error("CreateNamedPipe failed: " + std::to_string(GetLastError()));
         return;
     }
 
-    // 关联到 IOCP
+    // Associate with IOCP
     HANDLE hPort = CreateIoCompletionPort(hPipe, m_hCompletionPort,
                                            COMPLETION_KEY_IO, 0);
     if (!hPort) {
-        Logger::error("关联 IOCP 失败: " + std::to_string(GetLastError()));
+        Logger::error("Failed to associate with IOCP: " + std::to_string(GetLastError()));
         CloseHandle(hPipe);
         return;
     }
 
-    // 创建客户端上下文
+    // Create client context
     u64 clientId = m_nextClientId++;
     auto ctx = std::make_unique<ClientContext>();
     ctx->hPipe = hPipe;
@@ -320,7 +320,7 @@ void IpcServer::_acceptConnection() {
         m_clients[clientId] = std::move(ctx);
     }
 
-    // 异步等待连接
+    // Wait for connection asynchronously
     OVERLAPPED* overlapped = &m_clients[clientId]->overlapped;
     memset(overlapped, 0, sizeof(OVERLAPPED));
 
@@ -329,31 +329,31 @@ void IpcServer::_acceptConnection() {
 
     if (!connected) {
         if (lastError == ERROR_IO_PENDING) {
-            // 正在等待连接，IOCP 会在完成时通知
+            // Connection pending, IOCP will notify on completion
         } else if (lastError == ERROR_PIPE_CONNECTED) {
-            // 客户端已经连接
-            // 投递读操作
+            // Client already connected
+            // Post read operation
             _postRead(clientId);
         } else {
-            Logger::error("ConnectNamedPipe 失败: " + std::to_string(lastError));
+            Logger::error("ConnectNamedPipe failed: " + std::to_string(lastError));
             _cleanupClient(clientId);
             return;
         }
     }
 
-    // 通知连接
+    // Notify connection
     if (m_onClientConnect) {
         m_onClientConnect(clientId);
     }
 
-    // 继续接受下一个连接
+    // Continue accepting next connection
     if (m_running) {
         _acceptConnection();
     }
 }
 
 // ============================================================
-// 投递异步读
+// Post async read
 // ============================================================
 
 void IpcServer::_postRead(u64 clientId) {
@@ -379,7 +379,7 @@ void IpcServer::_postRead(u64 clientId) {
 }
 
 // ============================================================
-// 处理接收数据
+// Process received data
 // ============================================================
 
 void IpcServer::_handleData(u64 clientId, const std::string& /*data*/) {
@@ -394,7 +394,7 @@ void IpcServer::_handleData(u64 clientId, const std::string& /*data*/) {
         it->second->lineBuffer.clear();
     }
 
-    // 按 \n 分帧
+    // Frame by \n
     size_t start = 0;
     size_t pos = 0;
     while ((pos = lineBuffer.find('\n', start)) != std::string::npos) {
@@ -411,7 +411,7 @@ void IpcServer::_handleData(u64 clientId, const std::string& /*data*/) {
         }
     }
 
-    // 保留不完整的行
+    // Keep incomplete line
     if (start < lineBuffer.size()) {
         std::lock_guard<std::mutex> lock(m_clientsMutex);
         auto it = m_clients.find(clientId);
@@ -422,7 +422,7 @@ void IpcServer::_handleData(u64 clientId, const std::string& /*data*/) {
 }
 
 // ============================================================
-// 处理请求
+// Handle request
 // ============================================================
 
 void IpcServer::_handleRequest(u64 clientId, const IpcRequest& request) {
@@ -432,7 +432,7 @@ void IpcServer::_handleRequest(u64 clientId, const IpcRequest& request) {
     auto it = m_handlers.find(request.command);
     if (it == m_handlers.end()) {
         response.success = false;
-        response.error = "未知命令: " + commandTypeToString(request.command);
+        response.error = "Unknown command: " + commandTypeToString(request.command);
     } else {
         try {
             auto result = it->second(request.payload, clientId);
@@ -449,7 +449,7 @@ void IpcServer::_handleRequest(u64 clientId, const IpcRequest& request) {
 }
 
 // ============================================================
-// 清理客户端
+// Cleanup client
 // ============================================================
 
 void IpcServer::_cleanupClient(u64 clientId) {

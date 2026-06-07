@@ -12,7 +12,7 @@
 namespace th {
 
 /**
- * @brief 创建会话选项
+ * @brief Create session options
  */
 struct CreateSessionOptions {
     std::optional<std::string> title;
@@ -23,47 +23,47 @@ struct CreateSessionOptions {
 };
 
 /**
- * @brief 会话管理器
+ * @brief Session manager
  *
- * 管理 PTY 会话的生命周期：创建、查找、终止、重命名。
+ * Manages PTY session lifecycle: creation, lookup, termination, renaming.
  */
 class SessionManager {
 public:
     explicit SessionManager(const Config& config);
 
     /**
-     * @brief 初始化：从持久化加载会话，清理已死亡的
+     * @brief Initialize: load sessions from persistence, clean up dead ones
      */
     void initialize();
 
     /**
-     * @brief 创建新会话
+     * @brief Create a new session
      */
     Result<Session*> createSession(const CreateSessionOptions& options);
 
     /**
-     * @brief 获取会话
+     * @brief Get a session
      */
     Session* getSession(const std::string& sessionId);
 
     /**
-     * @brief 列出所有会话
+     * @brief List all sessions
      */
     std::vector<SessionListItem> listSessions();
 
     /**
-     * @brief 终止会话
+     * @brief Kill a session
      */
     bool killSession(const std::string& sessionId);
 
     /**
-     * @brief 重命名会话
+     * @brief Rename a session
      */
     bool renameSession(const std::string& sessionId, const std::string& newTitle);
 
 private:
     /**
-     * @brief 处理会话退出
+     * @brief Handle session exit
      */
     void _handleSessionExit(const std::string& sessionId);
 

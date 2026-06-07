@@ -5,7 +5,7 @@
 
 using namespace th;
 
-// === Session 基本测试 ===
+// === Session basic tests ===
 
 TEST(Session, Construction) {
     SessionMetadata meta;
@@ -40,7 +40,7 @@ TEST(Session, AddRemoveClient) {
     EXPECT_EQ(session.clients().size(), 1u);
     EXPECT_EQ(session.clients().count(2), 1u);
 
-    // 重复添加不会增加计数
+    // Duplicate add does not increase count
     session.addClient(2);
     EXPECT_EQ(session.metadata.connectedClients, 1);
 }
@@ -60,7 +60,7 @@ TEST(Session, IsAliveWithoutPty) {
     meta.id = "test";
     Session session(std::move(meta), 50);
 
-    // 没有 PTY 进程时，isAlive 返回 false
+    // Without PTY process, isAlive returns false
     EXPECT_FALSE(session.isAlive());
 }
 
@@ -92,6 +92,49 @@ TEST(Session, BroadcastExitCallback) {
     EXPECT_EQ(exitCode, 42u);
 }
 
+TEST(Session, PerClientOutputListeners) {
+    SessionMetadata meta;
+    meta.id = "test";
+    Session session(std::move(meta), 50);
+
+    std::string client1Received;
+    std::string client2Received;
+    session.addOutputListener(1, [&client1Received](const std::string& data) {
+        client1Received = data;
+    });
+    session.addOutputListener(2, [&client2Received](const std::string& data) {
+        client2Received = data;
+    });
+
+    session.broadcastOutput("hello");
+    EXPECT_EQ(client1Received, "hello");
+    EXPECT_EQ(client2Received, "hello");
+}
+
+TEST(Session, RemoveClientListeners) {
+    SessionMetadata meta;
+    meta.id = "test";
+    Session session(std::move(meta), 50);
+
+    std::string client1Received;
+    std::string client2Received;
+    session.addOutputListener(1, [&client1Received](const std::string& data) {
+        client1Received = data;
+    });
+    session.addOutputListener(2, [&client2Received](const std::string& data) {
+        client2Received = data;
+    });
+
+    session.addClient(1);
+    session.addClient(2);
+
+    session.removeClient(1);
+
+    session.broadcastOutput("after remove");
+    EXPECT_EQ(client1Received, "");  // Should not receive after removal
+    EXPECT_EQ(client2Received, "after remove");
+}
+
 TEST(Session, OutputBufferIntegration) {
     SessionMetadata meta;
     meta.id = "test";
@@ -105,7 +148,7 @@ TEST(Session, OutputBufferIntegration) {
     EXPECT_EQ(lines[2], "line3");
 }
 
-// === SessionListItem 默认值测试 ===
+// === SessionListItem default value tests ===
 
 TEST(SessionListItem, DefaultValues) {
     SessionListItem item;
@@ -116,7 +159,7 @@ TEST(SessionListItem, DefaultValues) {
     EXPECT_FALSE(item.alive);
 }
 
-// === ConPty 辅助函数测试 ===
+// === ConPty helper function tests ===
 
 TEST(ConPty, GetDefaultShell) {
     EXPECT_EQ(getDefaultShell("powershell"), "powershell.exe");
@@ -126,7 +169,7 @@ TEST(ConPty, GetDefaultShell) {
     EXPECT_EQ(getDefaultShell(""), "powershell.exe");
 }
 
-// === ConPty 创建测试 ===
+// === ConPty creation tests ===
 
 TEST(ConPty, CreateWithEmptyShellFails) {
     ConPtyOptions opts;
@@ -165,7 +208,7 @@ TEST(ConPty, CreateAndDestroy) {
     EXPECT_TRUE(pty->isAlive());
 
     pty->kill();
-    // 等待进程退出
+    // Wait for process to exit
     Sleep(500);
     EXPECT_FALSE(pty->isAlive());
 }
@@ -186,7 +229,7 @@ TEST(ConPty, CreateAndReadOutput) {
         output += data;
     });
 
-    // cmd.exe 启动后会输出一些内容
+    // cmd.exe outputs some content after startup
     Sleep(1000);
     EXPECT_FALSE(output.empty());
 
@@ -205,11 +248,11 @@ TEST(ConPty, Resize) {
 
     auto& pty = result.value();
 
-    // 应该不会崩溃
+    // Should not crash
     pty->resize(120, 40);
     pty->resize(40, 10);
 
-    // 无效参数应该被忽略
+    // Invalid parameters should be ignored
     pty->resize(0, 24);
     pty->resize(80, -1);
 
@@ -233,11 +276,11 @@ TEST(ConPty, WriteInput) {
         output += data;
     });
 
-    // 写入命令
+    // Write command
     pty->write("echo hello\r\n");
     Sleep(1000);
 
-    // 应该在输出中看到 "hello"
+    // Should see "hello" in output
     EXPECT_NE(output.find("hello"), std::string::npos);
 
     pty->kill();

@@ -14,7 +14,7 @@ void Logger::init(LogLevel level, std::string_view prefix) {
     auto sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     s_logger = std::make_shared<spdlog::logger>(std::string(prefix), sink);
 
-    // 设置格式：[时间] [TerminalHub] [级别] 消息
+    // Format: [timestamp] [prefix] [level] message
     s_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
 
     auto spdlogLevel = spdlog::level::info;

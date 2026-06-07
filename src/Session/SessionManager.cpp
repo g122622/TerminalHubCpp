@@ -13,10 +13,10 @@ SessionManager::SessionManager(const Config& config)
 }
 
 void SessionManager::initialize() {
-    // 清理无效会话
+    // Clean up stale sessions
     auto removed = m_registry.cleanup();
     if (!removed.empty()) {
-        Logger::info("清理了 " + std::to_string(removed.size()) + " 个无效会话");
+        Logger::info("Cleaned up " + std::to_string(removed.size()) + " stale sessions");
     }
 }
 
@@ -26,7 +26,7 @@ Result<Session*> SessionManager::createSession(const CreateSessionOptions& optio
     i32 cols = options.cols.value_or(m_config.terminal.cols);
     i32 rows = options.rows.value_or(m_config.terminal.rows);
 
-    // 创建 PTY 进程
+    // Create PTY process
     ConPtyOptions ptyOpts;
     ptyOpts.shell = shell;
     ptyOpts.cols = cols;
@@ -42,10 +42,10 @@ Result<Session*> SessionManager::createSession(const CreateSessionOptions& optio
 
     auto pty = std::move(ptyResult.value());
 
-    // 创建输出缓冲区
+    // Create output buffer
     i32 bufferSize = m_config.session.outputBufferLines;
 
-    // 创建会话元数据
+    // Create session metadata
     SessionMetadata metadata;
     metadata.id = id;
     metadata.title = options.title.value_or("Session " + id);
@@ -58,33 +58,33 @@ Result<Session*> SessionManager::createSession(const CreateSessionOptions& optio
     metadata.lastActivityAt = metadata.createdAt;
     metadata.connectedClients = 0;
 
-    // 创建会话
+    // Create session
     auto session = std::make_unique<Session>(std::move(metadata), bufferSize);
     Session* rawPtr = session.get();
 
-    // 保存 PTY 指针
+    // Store PTY pointer
     session->ptyProcess = std::move(pty);
 
-    // 监听输出
+    // Listen for output
     session->ptyProcess->onOutput([rawPtr](std::string_view data) {
         rawPtr->outputBuffer.write(data);
         rawPtr->broadcastOutput(std::string(data));
     });
 
-    // 监听退出
-    std::string sessionId = id; // 捕获用
+    // Listen for exit
+    std::string sessionId = id;
     session->ptyProcess->onExit([this, sessionId](u32 exitCode) {
-        Logger::info("会话 " + sessionId + " 退出: code=" + std::to_string(exitCode));
+        Logger::info("Session " + sessionId + " exited: code=" + std::to_string(exitCode));
         _handleSessionExit(sessionId);
     });
 
-    // 持久化
+    // Persist to registry
     m_registry.save(session->metadata);
 
-    // 存入内存
+    // Store in memory
     m_sessions[id] = std::move(session);
 
-    Logger::info("创建会话: " + id + " (PID: " + std::to_string(rawPtr->metadata.pid) + ")");
+    Logger::info("Session created: " + id + " (PID: " + std::to_string(rawPtr->metadata.pid) + ")");
 
     return Result<Session*>::ok(rawPtr);
 }
@@ -104,7 +104,7 @@ std::vector<SessionListItem> SessionManager::listSessions() {
     for (auto& item : persistedItems) {
         auto* session = getSession(item.id);
         if (session) {
-            // 使用内存中的实时数据
+            // Use real-time data from memory
             item.connectedClients = session->metadata.connectedClients;
         }
         result.push_back(item);
@@ -123,7 +123,7 @@ bool SessionManager::killSession(const std::string& sessionId) {
     m_sessions.erase(it);
     m_registry.remove(sessionId);
 
-    Logger::info("终止会话: " + sessionId);
+    Logger::info("Session killed: " + sessionId);
     return true;
 }
 
@@ -137,7 +137,7 @@ bool SessionManager::renameSession(const std::string& sessionId,
     it->second->metadata.title = newTitle;
     m_registry.save(it->second->metadata);
 
-    Logger::info("重命名会话: " + sessionId + " -> " + newTitle);
+    Logger::info("Session renamed: " + sessionId + " -> " + newTitle);
     return true;
 }
 
