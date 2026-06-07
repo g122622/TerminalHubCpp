@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "terminalhub",
+  "version": "1.0.0",
+  "description": "Terminal session manager - C++20 rewrite",
+  "dependencies": [
+    "nlohmann-json",
+    "spdlog",
+    "gtest"
+  ],
+  "builtin-baseline": "39a6cc0e44641977a7ccdfdb01a14eaf832aa330"
+}
