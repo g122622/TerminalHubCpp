@@ -452,6 +452,12 @@ static int cmdAttach(const std::string& sessionId) {
         return 1;
     }
 
+    // 设置控制台代码页为 UTF-8，确保中文等 UTF-8 字符正确显示
+    UINT oldInputCp = GetConsoleCP();
+    UINT oldOutputCp = GetConsoleOutputCP();
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+
     // Display history output
     if (data.contains("history") && data["history"].is_array()) {
         // Clear screen
@@ -470,16 +476,17 @@ static int cmdAttach(const std::string& sessionId) {
         }
     }
 
-    printInfo("Connected to session " + sessionId + ", press Ctrl+D or Ctrl+C to exit");
+    printInfo("Connected to session " + sessionId + ", press Ctrl+D to exit");
 
-    // Set raw mode
+    // 设置 raw mode：禁用回显、行缓冲和快捷键处理
+    // 不使用 ENABLE_VIRTUAL_TERMINAL_INPUT，因为我们需要通过
+    // ReadConsoleInputW 读取 INPUT_RECORD 来手动处理特殊键
     HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
     DWORD oldInputMode = 0;
     GetConsoleMode(hStdIn, &oldInputMode);
     DWORD newInputMode = oldInputMode;
     newInputMode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT |
                        ENABLE_PROCESSED_INPUT);
-    newInputMode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
     SetConsoleMode(hStdIn, newInputMode);
 
     // Enable VT sequences on output
@@ -519,7 +526,7 @@ static int cmdAttach(const std::string& sessionId) {
         ctx->exiting = true;
     });
 
-    // Input loop
+    // 输入循环
     INPUT_RECORD records[16];
     while (!ctx->exiting) {
         DWORD eventsRead = 0;
@@ -533,34 +540,62 @@ static int cmdAttach(const std::string& sessionId) {
 
                 if (!keyEvent.bKeyDown) continue;
 
-                // Ctrl+D to exit
+                // Ctrl+D 退出（Ctrl+C 作为普通输入转发给 PTY）
                 if (keyEvent.wVirtualKeyCode == 0x44 && // 'D'
                     (keyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) {
                     ctx->exiting = true;
                     break;
                 }
 
-                // Ctrl+C to exit
-                if (keyEvent.wVirtualKeyCode == 0x43 && // 'C'
-                    (keyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) {
-                    ctx->exiting = true;
-                    break;
-                }
+                // 生成输入数据
+                std::string inputData;
 
-                // Get input character
                 if (keyEvent.uChar.UnicodeChar != 0) {
+                    // 普通字符：转换为 UTF-8
                     char buf[8] = {};
                     int len = WideCharToMultiByte(CP_UTF8, 0,
                         &keyEvent.uChar.UnicodeChar, 1, buf, sizeof(buf), nullptr, nullptr);
                     if (len > 0) {
-                        InputPayload inputPayload;
-                        inputPayload.sessionId = sessionId;
-                        inputPayload.data = std::string(buf, len);
-                        client.request(CommandType::Input, inputPayload.toJson(), 0);
+                        inputData.assign(buf, len);
+                    }
+                } else {
+                    // 特殊键：生成 VT 转义序列
+                    bool shift = (keyEvent.dwControlKeyState & SHIFT_PRESSED) != 0;
+                    switch (keyEvent.wVirtualKeyCode) {
+                        case VK_UP:    inputData = shift ? "\x1b[1;2A" : "\x1b[A"; break;
+                        case VK_DOWN:  inputData = shift ? "\x1b[1;2B" : "\x1b[B"; break;
+                        case VK_RIGHT: inputData = shift ? "\x1b[1;2C" : "\x1b[C"; break;
+                        case VK_LEFT:  inputData = shift ? "\x1b[1;2D" : "\x1b[D"; break;
+                        case VK_HOME:  inputData = shift ? "\x1b[1;2H" : "\x1b[H"; break;
+                        case VK_END:   inputData = shift ? "\x1b[1;2F" : "\x1b[F"; break;
+                        case VK_DELETE:inputData = "\x1b[3~"; break;
+                        case VK_PRIOR: inputData = "\x1b[5~"; break;  // Page Up
+                        case VK_NEXT:  inputData = "\x1b[6~"; break;  // Page Down
+                        case VK_INSERT:inputData = "\x1b[2~"; break;
+                        case VK_F1:    inputData = "\x1bOP"; break;
+                        case VK_F2:    inputData = "\x1bOQ"; break;
+                        case VK_F3:    inputData = "\x1bOR"; break;
+                        case VK_F4:    inputData = "\x1bOS"; break;
+                        case VK_F5:    inputData = "\x1b[15~"; break;
+                        case VK_F6:    inputData = "\x1b[17~"; break;
+                        case VK_F7:    inputData = "\x1b[18~"; break;
+                        case VK_F8:    inputData = "\x1b[19~"; break;
+                        case VK_F9:    inputData = "\x1b[20~"; break;
+                        case VK_F10:   inputData = "\x1b[21~"; break;
+                        case VK_F11:   inputData = "\x1b[23~"; break;
+                        case VK_F12:   inputData = "\x1b[24~"; break;
+                        default: break;
                     }
                 }
+
+                if (!inputData.empty()) {
+                    InputPayload inputPayload;
+                    inputPayload.sessionId = sessionId;
+                    inputPayload.data = std::move(inputData);
+                    client.request(CommandType::Input, inputPayload.toJson(), 0);
+                }
             } else if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
-                // Terminal resize event
+                // 终端大小改变事件
                 CONSOLE_SCREEN_BUFFER_INFO csbi2;
                 if (GetConsoleScreenBufferInfo(hStdOut, &csbi2)) {
                     i32 newCols = csbi2.srWindow.Right - csbi2.srWindow.Left + 1;
@@ -582,10 +617,12 @@ static int cmdAttach(const std::string& sessionId) {
     detachPayload.sessionId = sessionId;
     client.request(CommandType::Detach, detachPayload.toJson(), 0);
 
-    // Remove Ctrl handler and restore console mode
+    // Remove Ctrl handler and restore console mode and codepage
     SetConsoleCtrlHandler(ctrlHandler, FALSE);
     SetConsoleMode(hStdIn, oldInputMode);
     SetConsoleMode(hStdOut, oldOutputMode);
+    SetConsoleCP(oldInputCp);
+    SetConsoleOutputCP(oldOutputCp);
 
     client.disconnect();
     printInfo("Disconnected from session");

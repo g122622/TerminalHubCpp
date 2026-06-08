@@ -226,22 +226,20 @@ void IpcClient::_readThreadFunc() {
         if (!ok) {
             DWORD err = GetLastError();
             if (err == ERROR_IO_PENDING) {
-                // Wait for completion
-                DWORD waitResult = WaitForSingleObject(overlapped.hEvent, 500);
+                // 无限等待，由 CancelIoEx 唤醒
+                DWORD waitResult = WaitForSingleObject(overlapped.hEvent, INFINITE);
                 if (waitResult == WAIT_OBJECT_0) {
                     DWORD bytesRead = 0;
                     ok = GetOverlappedResult(m_hPipe, &overlapped, &bytesRead, FALSE);
                     if (ok && bytesRead > 0) {
                         buffer[bytesRead] = '\0';
                         _handleData(std::string(buffer, bytesRead));
-                    } else if (!ok || bytesRead == 0) {
+                    } else {
                         CloseHandle(overlapped.hEvent);
                         break;
                     }
-                } else if (waitResult == WAIT_TIMEOUT) {
-                    CloseHandle(overlapped.hEvent);
-                    continue;
                 } else {
+                    // WAIT_FAILED 或被 CancelIoEx 取消
                     CloseHandle(overlapped.hEvent);
                     break;
                 }
@@ -250,7 +248,7 @@ void IpcClient::_readThreadFunc() {
                 break;
             }
         } else {
-            // ReadFile completed synchronously
+            // ReadFile 同步完成
             DWORD bytesRead = 0;
             GetOverlappedResult(m_hPipe, &overlapped, &bytesRead, FALSE);
             if (bytesRead > 0) {
@@ -267,7 +265,7 @@ void IpcClient::_readThreadFunc() {
 
     m_running = false;
 
-    // Notify disconnect callback if not explicitly disconnecting
+    // 连接断开时通知回调
     if (m_hPipe != INVALID_HANDLE_VALUE && m_onDisconnect) {
         m_onDisconnect();
     }
